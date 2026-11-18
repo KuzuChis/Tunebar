@@ -8,6 +8,10 @@ namespace MediaTray.Core;
 /// </summary>
 public sealed class SourceRegistry
 {
+    // How long a locked source may be missing (extension reconnecting) before the lock is dropped.
+    private static readonly TimeSpan LockGracePeriod = TimeSpan.FromSeconds(10);
+    private static readonly string[] TitleSuffixes = [" - YouTube Music", " - YouTube"];
+
     private readonly Func<DateTimeOffset> _now;
 
     private IReadOnlyList<MediaSource> _extensionSources = [];
@@ -19,6 +23,7 @@ public sealed class SourceRegistry
     private readonly Dictionary<string, bool> _wasPlaying = new();
 
     private string? _selectedId;
+    private DateTimeOffset? _lockMissingSince; // set while the locked source is not visible
 
     // What we last told listeners, so Changed fires only on a real change.
     private IReadOnlyList<MediaSource> _lastSnapshot = [];
@@ -61,6 +66,7 @@ public sealed class SourceRegistry
     {
         if (!Visible().Any(s => s.Id == id)) return;
         LockedId = id;
+        _lockMissingSince = null;
         Notify();
     }
 
@@ -68,6 +74,7 @@ public sealed class SourceRegistry
     public void Unlock()
     {
         LockedId = null;
+        _lockMissingSince = null;
         Notify();
     }
 
@@ -84,13 +91,25 @@ public sealed class SourceRegistry
     private List<MediaSource> Visible()
     {
         var tabTitles = _extensionSources
-            .Select(s => s.Title.Trim())
+            .Select(s => NormalizeTitle(s.Title))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var smtc = _smtcSources.Where(s =>
-            !(s.AppName == "Opera" && tabTitles.Contains(s.Title.Trim())));
+            !(s.AppName == "Opera" && tabTitles.Contains(NormalizeTitle(s.Title))));
 
         return _extensionSources.Concat(smtc).ToList();
+    }
+
+    /// <summary>Trims the title and removes a trailing " - YouTube" / " - YouTube Music" (Opera adds it).</summary>
+    private static string NormalizeTitle(string title)
+    {
+        var trimmed = title.Trim();
+        foreach (var suffix in TitleSuffixes)
+        {
+            if (trimmed.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return trimmed[..^suffix.Length].Trim();
+        }
+        return trimmed;
     }
 
     /// <summary>
@@ -151,10 +170,35 @@ public sealed class SourceRegistry
             _pausedAt.Remove(id);
         }
 
-        if (LockedId is not null && !Visible().Any(s => s.Id == LockedId)) LockedId = null;
+        UpdateLock(now);
         if (_selectedId is not null && !present.Contains(_selectedId)) _selectedId = null;
 
         Notify();
+    }
+
+    /// <summary>
+    /// A locked source that went missing keeps its lock for <see cref="LockGracePeriod"/> (the
+    /// extension may just be reconnecting). If it is still not back after that, the lock is released.
+    /// </summary>
+    private void UpdateLock(DateTimeOffset now)
+    {
+        if (LockedId is null)
+        {
+            _lockMissingSince = null;
+            return;
+        }
+
+        // Check expiry first: a source that comes back only after the grace period is too late.
+        if (_lockMissingSince is { } since && now - since > LockGracePeriod)
+        {
+            LockedId = null;
+            _lockMissingSince = null;
+            return;
+        }
+
+        var present = Visible().Any(s => s.Id == LockedId);
+        if (present) _lockMissingSince = null;
+        else _lockMissingSince ??= now;
     }
 
     /// <summary>Raises Changed only if the ordered list (same instances, same order) or the lock changed.</summary>

@@ -16,7 +16,9 @@ public class FormatTests
         Assert.Equal("Playlist · 3 dari 12", Format.PlaylistHeader(new Playlist(2, items)));
     }
 
-    [Fact] public void OthersLabel_counts() => Assert.Equal("2 sumber lain memutar", Format.OthersLabel(2));
+    [Fact] public void OthersLabel_all_playing() => Assert.Equal("2 sumber lain memutar", Format.OthersLabel(2, 2));
+    [Fact] public void OthersLabel_some_playing() => Assert.Equal("3 sumber lain · 1 memutar", Format.OthersLabel(3, 1));
+    [Fact] public void OthersLabel_none_playing() => Assert.Equal("2 sumber lain", Format.OthersLabel(2, 0));
     [Fact] public void Percent_normal() => Assert.Equal("70%", Format.Percent(0.7));
     [Fact] public void Percent_boosted() => Assert.Equal("150%", Format.Percent(1.5));
 }

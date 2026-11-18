@@ -69,15 +69,42 @@ public sealed class AutoStart
             SetEnabled(true);
     }
 
-    /// <summary>A missing, unreadable or corrupt settings file all count as "no settings yet".</summary>
-    private bool SettingsExist()
+    /// <summary>
+    /// When settings.json says auto-start is on but the Run value is missing or points to another
+    /// exe (for example the app was moved), rewrites it to this exe. Does nothing otherwise.
+    /// </summary>
+    public void Reconcile()
     {
+        if (ReadSettings() == true && !IsEnabled)
+            SetEnabled(true);
+    }
+
+    /// <summary>A missing, unreadable or corrupt settings file all count as "no settings yet".</summary>
+    private bool SettingsExist() => ReadSettingsObject(out _);
+
+    /// <summary>The saved autoStart choice; null when there are no usable settings or no such field.</summary>
+    private bool? ReadSettings()
+    {
+        if (!ReadSettingsObject(out var autoStart))
+            return null;
+        return autoStart;
+    }
+
+    /// <summary>Reads settings.json. Returns false for a missing, unreadable or non-object file.</summary>
+    private bool ReadSettingsObject(out bool? autoStart)
+    {
+        autoStart = null;
         try
         {
             if (!File.Exists(_settingsPath))
                 return false;
             using var doc = JsonDocument.Parse(File.ReadAllText(_settingsPath));
-            return doc.RootElement.ValueKind == JsonValueKind.Object;
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+            if (doc.RootElement.TryGetProperty("autoStart", out var value)
+                && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                autoStart = value.GetBoolean();
+            return true;
         }
         catch (Exception)
         {

@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using H.NotifyIcon;
 using MediaTray.Bridge;
@@ -25,8 +28,23 @@ public partial class App : Application
     private PopupWindow? _popup;
     private AutoStart? _autoStart;
 
+    [DllImport("kernel32.dll")]
+    private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
+
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Safety net first: a stray exception in a tray app should be logged, not kill the icon.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Debug.WriteLine($"Unhandled UI exception: {args.Exception}");
+            args.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Debug.WriteLine($"Unobserved task exception: {args.Exception}");
+            args.SetObserved();
+        };
+
         base.OnStartup(e);
 
         // Only one Media Tray at a time. A second copy exits quietly.
@@ -39,10 +57,21 @@ public partial class App : Application
             return;
         }
 
+        // Software rendering uses less memory than the GPU pipeline for a small popup.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+
         Theme.Apply(this);
 
         _autoStart = CreateAutoStart();
-        _autoStart.ApplyFirstRunDefault();
+        try
+        {
+            _autoStart.ApplyFirstRunDefault();
+            _autoStart.Reconcile();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Auto-start setup failed: {ex.Message}");
+        }
 
         var registry = new SourceRegistry(() => DateTimeOffset.Now);
 
@@ -52,14 +81,15 @@ public partial class App : Application
         _server.Disconnected += () => Dispatcher.InvokeAsync(registry.ClearExtensionSources);
         var portInUse = !TryStartServer(_server);
 
-        // Windows media sessions (Spotify, VLC, ...). If this fails we still run, just without them.
-        _smtc = await TryCreateSmtcAsync();
-        if (_smtc is not null)
-            _smtc.SourcesChanged += sources => Dispatcher.InvokeAsync(() => registry.SetSmtcSources(sources));
-
-        var commands = new CommandRouter(_server, (ISourceCommands?)_smtc ?? new NoCommands());
+        // The tray icon and popup come first; Windows media is connected afterwards through LateCommands.
+        var smtcCommands = new LateCommands();
+        var commands = new CommandRouter(_server, smtcCommands);
         var viewModel = new PopupViewModel(registry, commands, action => Dispatcher.InvokeAsync(action));
         _popup = new PopupWindow(viewModel);
+        _popup.IsVisibleChanged += (_, args) =>
+        {
+            if (args.NewValue is false) TrimWorkingSet();
+        };
 
         _tray = CreateTrayIcon();
         if (portInUse)
@@ -68,6 +98,32 @@ public partial class App : Application
         // Developer aid: "MediaTray.exe --show" opens the popup right away (for screenshots).
         if (e.Args.Contains("--show"))
             _popup.Toggle();
+
+        // Windows media sessions (Spotify, VLC, ...). If this fails we still run, just without them.
+        var smtc = await TryCreateSmtcAsync();
+        if (smtc is null) return;
+        if (_singleInstance is null) // the app was shut down while we were waiting
+        {
+            smtc.Dispose();
+            return;
+        }
+        _smtc = smtc;
+        smtcCommands.Target = smtc;
+        smtc.SourcesChanged += sources => Dispatcher.InvokeAsync(() => registry.SetSmtcSources(sources));
+    }
+
+    /// <summary>Asks Windows to give back unused memory (the popup just hid, so the app is idle).</summary>
+    private static void TrimWorkingSet()
+    {
+        try
+        {
+            using var self = Process.GetCurrentProcess();
+            SetProcessWorkingSetSize(self.Handle, -1, -1);
+        }
+        catch (Exception)
+        {
+            // Only an optimisation.
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -101,12 +157,14 @@ public partial class App : Application
 
     private static async Task<SmtcProvider?> TryCreateSmtcAsync()
     {
+        var volume = new AppVolumeController();
         try
         {
-            return await SmtcProvider.CreateAsync(new AppVolumeController());
+            return await SmtcProvider.CreateAsync(volume);
         }
         catch (Exception)
         {
+            volume.Dispose();
             return null;
         }
     }
@@ -127,7 +185,14 @@ public partial class App : Application
         autoStartItem.Click += (_, _) =>
         {
             if (_autoStart is null) return;
-            _autoStart.SetEnabled(!_autoStart.IsEnabled);
+            try
+            {
+                _autoStart.SetEnabled(!_autoStart.IsEnabled);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Changing auto-start failed: {ex.Message}");
+            }
             autoStartItem.IsChecked = _autoStart.IsEnabled;
         };
         menu.Items.Add(autoStartItem);
@@ -183,15 +248,20 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Used when Windows media could not start: every command does nothing.</summary>
-    private sealed class NoCommands : ISourceCommands
+    /// <summary>
+    /// Forwards commands to <see cref="Target"/> once Windows media is ready.
+    /// Until then (or if it never starts) every command does nothing.
+    /// </summary>
+    private sealed class LateCommands : ISourceCommands
     {
-        public Task TogglePlayAsync(MediaSource s) => Task.CompletedTask;
-        public Task NextAsync(MediaSource s) => Task.CompletedTask;
-        public Task PrevAsync(MediaSource s) => Task.CompletedTask;
-        public Task SeekAsync(MediaSource s, double seconds) => Task.CompletedTask;
-        public Task SetVolumeAsync(MediaSource s, double volume) => Task.CompletedTask;
-        public Task SetLoopAsync(MediaSource s, LoopMode mode) => Task.CompletedTask;
-        public Task JumpAsync(MediaSource s, int index) => Task.CompletedTask;
+        public ISourceCommands? Target { get; set; }
+
+        public Task TogglePlayAsync(MediaSource s) => Target?.TogglePlayAsync(s) ?? Task.CompletedTask;
+        public Task NextAsync(MediaSource s) => Target?.NextAsync(s) ?? Task.CompletedTask;
+        public Task PrevAsync(MediaSource s) => Target?.PrevAsync(s) ?? Task.CompletedTask;
+        public Task SeekAsync(MediaSource s, double seconds) => Target?.SeekAsync(s, seconds) ?? Task.CompletedTask;
+        public Task SetVolumeAsync(MediaSource s, double volume) => Target?.SetVolumeAsync(s, volume) ?? Task.CompletedTask;
+        public Task SetLoopAsync(MediaSource s, LoopMode mode) => Target?.SetLoopAsync(s, mode) ?? Task.CompletedTask;
+        public Task JumpAsync(MediaSource s, int index) => Target?.JumpAsync(s, index) ?? Task.CompletedTask;
     }
 }

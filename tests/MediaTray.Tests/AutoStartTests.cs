@@ -78,6 +78,34 @@ public sealed class AutoStartTests : IDisposable
     }
 
     [Fact]
+    public void Reconcile_rewrites_stale_path_when_enabled_in_settings()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(SettingsPath, "{\"autoStart\":true}");
+        using (var key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+            key.SetValue("MediaTray", "\"C:\\Old\\MediaTray.exe\"");
+        var autoStart = Create();
+
+        autoStart.Reconcile();
+
+        Assert.Equal($"\"{ExePath}\"", RunValue());
+        Assert.True(autoStart.IsEnabled);
+    }
+
+    [Fact]
+    public void Reconcile_leaves_disabled_alone()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(SettingsPath, "{\"autoStart\":false}");
+        var autoStart = Create();
+
+        autoStart.Reconcile();
+
+        Assert.Null(RunValue());
+        Assert.False(autoStart.IsEnabled);
+    }
+
+    [Fact]
     public void Corrupt_settings_count_as_missing()
     {
         Directory.CreateDirectory(_dir);

@@ -109,9 +109,9 @@ public class PopupViewModelTests
     {
         var (vm, registry, _) = Create();
         registry.SetExtensionSources([Tab(1)]);
-        registry.SetExtensionSources([Tab(1), Tab(2), Tab(3)]);
+        registry.SetExtensionSources([Tab(1), Tab(2), Tab(3, playing: false)]);
 
-        Assert.Equal("2 sumber lain memutar", vm.OthersText);
+        Assert.Equal("2 sumber lain · 1 memutar", vm.OthersText);
         Assert.Equal(2, vm.Others.Count);
     }
 

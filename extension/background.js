@@ -1,13 +1,15 @@
 // Media Tray bridge service worker: collects tab state, relays it to the tray app over
 // a local WebSocket, and forwards tray commands to tabs.
 importScripts("lib/core.js");
-const { nextDelay, buildSnapshot } = globalThis.MediaTrayCore;
+const { nextDelay, buildSnapshot, pruneStale } = globalThis.MediaTrayCore;
 
 const URL_WS = "ws://localhost:47821";
 const SEND_THROTTLE_MS = 250;
 const HEARTBEAT_MS = 20000;
+const STALE_MS = 12000; // content scripts report every <= 5 s; older entries are ghosts
 
-// Rebuilt from the content scripts' periodic state messages if the worker restarts.
+// tabId -> { at: arrival time, state }. Rebuilt from the content scripts' periodic state
+// messages if the worker restarts.
 const tabsById = {};
 let socket = null;
 let attempt = 0;
@@ -15,10 +17,17 @@ let reconnectTimer = null;
 let throttleTimer = null;
 let lastSend = 0;
 
+function currentSnapshot() {
+  pruneStale(tabsById, Date.now(), STALE_MS);
+  const states = {};
+  for (const id of Object.keys(tabsById)) states[id] = tabsById[id].state;
+  return buildSnapshot(states);
+}
+
 function sendSnapshot() {
   lastSend = Date.now();
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(buildSnapshot(tabsById)));
+    socket.send(JSON.stringify(currentSnapshot()));
   }
 }
 
@@ -82,13 +91,25 @@ function sendToTab(tabId, message) {
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg && msg.type === "state" && sender.tab && typeof sender.tab.id === "number") {
-    tabsById[sender.tab.id] = msg.state;
+    tabsById[sender.tab.id] = { at: Date.now(), state: msg.state };
     scheduleSnapshot();
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId in tabsById) {
+    delete tabsById[tabId];
+    scheduleSnapshot();
+  }
+});
+
+// A tab that navigated away from YouTube is no longer a source (url is only visible for
+// host-permitted pages, so the staleness pruning above is the main safety net).
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.url || !(tabId in tabsById)) return;
+  let host = "";
+  try { host = new URL(changeInfo.url).hostname; } catch (e) { /* ignore */ }
+  if (host !== "www.youtube.com" && host !== "music.youtube.com") {
     delete tabsById[tabId];
     scheduleSnapshot();
   }

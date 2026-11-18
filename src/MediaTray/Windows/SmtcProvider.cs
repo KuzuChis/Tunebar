@@ -12,6 +12,7 @@ namespace MediaTray.Windows;
 /// <summary>
 /// Shows every Windows media session (Spotify, VLC, ...) as a <see cref="MediaSource"/>
 /// and carries out commands on them. Events are raised from background threads.
+/// Disposing it also disposes the <see cref="AppVolumeController"/> it was given.
 /// </summary>
 public sealed class SmtcProvider : ISourceCommands, IDisposable
 {
@@ -114,6 +115,8 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
         var playback = session.GetPlaybackInfo();
         var timeline = session.GetTimelineProperties();
         var loopModes = LoopModesOf(playback.AutoRepeatMode);
+        var isPlaying = playback.PlaybackStatus == SmtcPlaybackStatus.Playing;
+        var duration = DurationOf(timeline);
 
         return new MediaSource(
             Id: IdPrefix + aumid,
@@ -124,9 +127,10 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
             Artist: string.IsNullOrEmpty(properties.Artist) ? null : properties.Artist,
             CoverUrl: null,
             CoverBytes: await GetCoverAsync(aumid, properties),
-            IsPlaying: playback.PlaybackStatus == SmtcPlaybackStatus.Playing,
-            PositionSec: timeline.Position.TotalSeconds,
-            DurationSec: DurationOf(timeline),
+            IsPlaying: isPlaying,
+            PositionSec: SmtcMath.CurrentPosition(
+                timeline.Position, timeline.LastUpdatedTime, DateTimeOffset.Now, isPlaying, duration),
+            DurationSec: duration,
             CanNext: playback.Controls.IsNextEnabled,
             CanPrev: playback.Controls.IsPreviousEnabled,
             Volume: VolumeOf(aumid),
@@ -254,8 +258,8 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
         if (AumidMapper.IsBrowser(aumid)) return Task.CompletedTask;
         var processName = AumidMapper.ProcessName(aumid);
         if (processName is null) return Task.CompletedTask;
-        _volume.SetVolume(processName, Math.Clamp(volume, 0.0, 1.0));
-        return Task.CompletedTask;
+        // The Core Audio call is blocking COM work: keep it off the UI thread (slider drags).
+        return Task.Run(() => _volume.SetVolume(processName, Math.Clamp(volume, 0.0, 1.0)));
     }
 
     /// <summary>Windows media sessions have no playlist, so this does nothing.</summary>
@@ -270,5 +274,6 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
         _disposed = true;
         _stop.Cancel();
         _manager.SessionsChanged -= OnSessionsChanged;
+        _volume.Dispose();
     }
 }

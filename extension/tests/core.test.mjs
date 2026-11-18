@@ -30,9 +30,17 @@ test("finiteOrNull", () => {
 });
 
 test("canAttachGain", () => {
-  assert.equal(core.canAttachGain({ hasBeenActive: false, contextState: "running" }), false);
-  assert.equal(core.canAttachGain({ hasBeenActive: true, contextState: "suspended" }), false);
-  assert.equal(core.canAttachGain({ hasBeenActive: true, contextState: "running" }), true);
+  assert.equal(core.canAttachGain({ contextState: "suspended" }), false);
+  assert.equal(core.canAttachGain({ contextState: "closed" }), false);
+  assert.equal(core.canAttachGain({ contextState: "running" }), true);
+});
+
+test("pruneStale drops entries older than maxAge", () => {
+  const entries = { 1: { at: 1000, state: {} }, 2: { at: 9000, state: {} } };
+  const removed = core.pruneStale(entries, 14000, 12000);
+  assert.deepEqual(JSON.parse(JSON.stringify(removed)), [1]);
+  assert.deepEqual(Object.keys(entries), ["2"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(core.pruneStale(entries, 14000, 12000))), []);
 });
 
 test("createGainTracker", () => {

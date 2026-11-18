@@ -4,9 +4,14 @@
 // <video>'s sound into Web Audio, so if the AudioContext is not running the tab goes silent.
 // Therefore the graph (source -> GainNode -> destination) is built only when
 //   1. a volume other than 1.0 is wanted (1.0 with no graph needs nothing),
-//   2. navigator.userActivation.hasBeenActive is true,
-//   3. the context is running after `await ctx.resume()` (canAttachGain),
-// and at most once per <video> element (GainTracker). Otherwise the audio is left untouched.
+//   2. the context is running after `await ctx.resume()` (canAttachGain; the resume is raced
+//      against a short timeout so a context blocked by autoplay policy cannot hang us),
+// and at most once per <video> element (GainTracker). Otherwise the audio is left untouched
+// and the attempt is retried on the next tick (so a reloaded tab regains its stored volume as
+// soon as the browser lets the context run).
+//
+// Reported volume: the gain value when the graph is attached; null only while an attach for a
+// volume other than 1.0 is failing (context not running); otherwise 1.
 (function () {
   const { clampVolume, finiteOrNull, canAttachGain, createGainTracker } = globalThis.MediaTrayCore;
   const site = globalThis.MediaTraySite || {};
@@ -17,6 +22,7 @@
   let ctx = null;
   let gain = null;
   let attaching = false;
+  let attachFailed = false; // last attach attempt for a non-1.0 volume could not run the context
 
   // ---- adapter access: any throw means "unsupported" ----
   function adapter(name, fallback, ...args) {
@@ -30,8 +36,12 @@
     }
   }
 
-  const getVideo = () => document.querySelector("video");
-  const hasBeenActive = () => !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
+  // Prefer the main player over e.g. hover-preview videos.
+  const getVideo = () =>
+    document.querySelector("#movie_player video") ||
+    document.querySelector("ytmusic-player video") ||
+    document.querySelector("video");
+  const RESUME_TIMEOUT_MS = 300;
 
   // ---- volume ----
   function storedVolume() {
@@ -49,8 +59,14 @@
 
   async function attachGraph(video) {
     if (!ctx) ctx = new AudioContext();
-    await ctx.resume();
-    if (!canAttachGain({ hasBeenActive: hasBeenActive(), contextState: ctx.state })) return false;
+    let timeoutId;
+    const timeout = new Promise((resolve) => { timeoutId = setTimeout(resolve, RESUME_TIMEOUT_MS); });
+    try {
+      await Promise.race([ctx.resume(), timeout]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!canAttachGain({ contextState: ctx.state })) return false;
     if (tracker.isAttached(video)) return true;
     const source = ctx.createMediaElementSource(video);
     if (!gain) {
@@ -68,13 +84,15 @@
     if (!video || attaching) return;
     const wanted = storedVolume();
     const attached = tracker.isAttached(video);
-    if (wanted === 1 && !gain) return; // 100% needs no graph
+    if (wanted === 1 && !gain) { attachFailed = false; return; } // 100% needs no graph
     if (!attached) {
-      if (wanted === 1 || !hasBeenActive()) return;
+      if (wanted === 1) return;
       attaching = true;
       try {
-        if (!(await attachGraph(video))) return;
+        attachFailed = !(await attachGraph(video));
+        if (attachFailed) return;
       } catch (e) {
+        attachFailed = true;
         return; // leave audio untouched
       } finally {
         attaching = false;
@@ -85,7 +103,7 @@
 
   function reportedVolume(video) {
     if (gain && tracker.isAttached(video)) return gain.gain.value;
-    return hasBeenActive() ? 1 : null;
+    return attachFailed ? null : 1;
   }
 
   // ---- state ----
@@ -196,11 +214,13 @@
   let timer = null;
   function tick() {
     clearTimeout(timer);
-    applyVolume().finally(() => {
-      report();
-      const video = getVideo();
-      timer = setTimeout(tick, video && !video.paused ? 1000 : 5000);
-    });
+    applyVolume()
+      .catch(() => {})
+      .finally(() => {
+        try { report(); } catch (e) { /* ignore */ }
+        const video = getVideo();
+        timer = setTimeout(tick, video && !video.paused ? 1000 : 5000);
+      });
   }
 
   for (const ev of ["play", "pause", "loadedmetadata", "volumechange"]) {

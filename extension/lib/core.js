@@ -15,8 +15,22 @@
     return typeof x === "number" && Number.isFinite(x) ? x : null;
   }
 
-  function canAttachGain({ hasBeenActive, contextState }) {
-    return hasBeenActive === true && contextState === "running";
+  // The gain graph may only be built while the AudioContext is running; otherwise the tab
+  // would go silent (createMediaElementSource() reroutes the sound into Web Audio for good).
+  function canAttachGain({ contextState }) {
+    return contextState === "running";
+  }
+
+  // Removes entries ({ at, state }) not refreshed within maxAgeMs; returns the removed tab ids.
+  function pruneStale(entries, now, maxAgeMs) {
+    const removed = [];
+    for (const id of Object.keys(entries)) {
+      if (now - entries[id].at > maxAgeMs) {
+        delete entries[id];
+        removed.push(Number(id));
+      }
+    }
+    return removed;
   }
 
   function createGainTracker() {
@@ -37,5 +51,6 @@
 
   globalThis.MediaTrayCore = {
     nextDelay, clampVolume, finiteOrNull, canAttachGain, createGainTracker, buildSnapshot,
+    pruneStale,
   };
 })();

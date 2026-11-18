@@ -103,7 +103,7 @@ public sealed class PopupViewModel : INotifyPropertyChanged
     /// <summary>Playlist lines. The same list is returned until the playlist or its active song changes.</summary>
     public IReadOnlyList<PlaylistRow> PlaylistRows => _playlistRows;
 
-    public string OthersText => Format.OthersLabel(_others.Count);
+    public string OthersText => Format.OthersLabel(_others.Count, _others.Count(o => o.IsPlaying));
     public IReadOnlyList<MediaSource> Others => _others;
 
     /// <summary>The other sources as long-lived rows (what the list in the popup binds to).</summary>

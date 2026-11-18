@@ -3,7 +3,6 @@
   "name": "Media Tray Bridge",
   "version": "1.0.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsQh3lB0WuYb1FJQ/THqmjLFQoZm9V6e4Ryyx0CI827mcWMg+39MZsx6Nq4iOsWjsEFL04abtYAcfcQu3HO5oJjc04e0yn9qUjDHEmGlgHBLKeuP6KodnMKK3SVlSyrecx5goqgRBa3Hj0qX6YDk6x0ZYXbhRJ4jtEGg9hCGaVfSYUCBS3cE0qjGHQgAgyZdyszFDausMNnwOjG4RLVZ0t8dkEa8TyPI7W1arh/NK6TJxuNDhohgomI2rNCLl4oo755Xjv1LgbCHL/EEKHX8chE6WLJDk4h4zPfVuX56eeLsiegNBCA/C8S25ZGIqRtvyqKC85eCXjnX6TxByQDN9VwIDAQAB",
-  "permissions": ["tabs"],
   "host_permissions": ["https://www.youtube.com/*", "https://music.youtube.com/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Media Tray — klik untuk reset volume tab ini ke 100%" },

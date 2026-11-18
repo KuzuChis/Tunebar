@@ -36,3 +36,9 @@ node --test "extension/tests/*.test.mjs"
 3. Klik **Load unpacked** lalu pilih folder `extension/` di project ini.
 
 Klik ikon ekstensi di toolbar Opera untuk mengembalikan volume tab aktif ke 100%.
+
+## Batasan yang diketahui
+
+- Popup selalu muncul di pojok kanan bawah monitor utama.
+- Setelah ekstensi di-reload atau diperbarui, muat ulang (reload) tab YouTube yang sedang terbuka agar tersambung kembali.
+- Gambar sampul dimuat dari server gambar YouTube (`i.ytimg.com` dan sejenisnya), jadi butuh koneksi internet.

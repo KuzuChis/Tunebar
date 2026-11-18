@@ -160,6 +160,21 @@ public class ExtensionServerTests : IDisposable
         Assert.True(_server.IsConnected);
     }
 
+    [Fact]
+    public async Task Oversized_message_closes_connection()
+    {
+        var disconnected = new TaskCompletionSource();
+        _server.Disconnected += () => disconnected.TrySetResult();
+
+        using var client = await ConnectAsync();
+        await WaitUntilConnectedAsync();
+        var big = new string('x', 1024 * 1024 + 100);
+        try { await SendTextAsync(client, big); } catch (WebSocketException) { /* server may close first */ }
+
+        await WithTimeout(disconnected.Task.ContinueWith(_ => true));
+        Assert.False(_server.IsConnected);
+    }
+
     private async Task WaitUntilConnectedAsync()
     {
         var deadline = DateTime.UtcNow + Wait;

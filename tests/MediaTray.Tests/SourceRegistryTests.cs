@@ -8,6 +8,7 @@ public class SourceRegistryTests
     {
         public DateTimeOffset Now { get; private set; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         public void Advance() => Now = Now.AddSeconds(1);
+        public void Advance(TimeSpan by) => Now += by;
     }
 
     private static MediaSource Src(string id, SourceKind kind, bool playing, string title = "T", string app = "Opera") =>
@@ -77,9 +78,56 @@ public class SourceRegistryTests
         reg.Lock("tab:1");
 
         reg.SetExtensionSources([]);
+        clock.Advance(TimeSpan.FromSeconds(11));
+        reg.SetSmtcSources([Smtc("sp", true)]);
 
         Assert.Null(reg.LockedId);
         Assert.Equal("smtc:sp", reg.Current?.Id);
+    }
+
+    [Fact]
+    public void Lock_survives_quick_reconnect()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, true)]);
+        reg.SetSmtcSources([Smtc("sp", true)]);
+        reg.Lock("tab:1");
+
+        reg.ClearExtensionSources();
+        Assert.Equal("smtc:sp", reg.Current?.Id); // absent: normal rule applies
+        clock.Advance(TimeSpan.FromSeconds(5));
+        reg.SetExtensionSources([Tab(1, true)]);
+
+        Assert.Equal("tab:1", reg.LockedId);
+        Assert.Equal("tab:1", reg.Current?.Id);
+    }
+
+    [Fact]
+    public void Lock_released_after_grace_period()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, true)]);
+        reg.Lock("tab:1");
+
+        reg.ClearExtensionSources();
+        clock.Advance(TimeSpan.FromSeconds(11));
+        reg.SetExtensionSources([Tab(1, true)]); // too late
+
+        Assert.Null(reg.LockedId);
+    }
+
+    [Fact]
+    public void Opera_duplicate_hidden_when_smtc_title_has_youtube_suffix()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, true, "Song")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song - YouTube", "Opera")]);
+
+        Assert.Equal("tab:1", reg.Current?.Id);
+        Assert.Empty(reg.Others);
     }
 
     [Fact]
@@ -91,6 +139,8 @@ public class SourceRegistryTests
         reg.SetSmtcSources([Smtc("sp", false)]);
         reg.Lock("tab:1");
 
+        reg.ClearExtensionSources();
+        clock.Advance(TimeSpan.FromSeconds(11));
         reg.ClearExtensionSources();
 
         Assert.Null(reg.LockedId);

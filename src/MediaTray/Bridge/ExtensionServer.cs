@@ -13,6 +13,9 @@ namespace MediaTray.Bridge;
 /// </summary>
 public sealed class ExtensionServer : ISourceCommands, IDisposable
 {
+    /// <summary>Largest single message accepted from the extension (1 MB); bigger ones end the connection.</summary>
+    private const int MaxMessageBytes = 1024 * 1024;
+
     private readonly HttpListener _listener = new();
     private readonly OriginValidator _validator;
     private readonly CancellationTokenSource _stop = new();
@@ -175,6 +178,20 @@ public sealed class ExtensionServer : ISourceCommands, IDisposable
         }
     }
 
+    /// <summary>Tells the client its message was too big. Errors are ignored: the connection ends anyway.</summary>
+    private static async Task CloseTooBigAsync(WebSocket socket)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            await socket.CloseOutputAsync(WebSocketCloseStatus.MessageTooBig, "message too big", timeout.Token);
+        }
+        catch (Exception)
+        {
+            // Client already gone.
+        }
+    }
+
     /// <summary>Reads one complete message; null when the client closed the socket. Binary messages give "".</summary>
     private async Task<string?> ReadMessageAsync(WebSocket socket)
     {
@@ -185,6 +202,11 @@ public sealed class ExtensionServer : ISourceCommands, IDisposable
         {
             result = await socket.ReceiveAsync(buffer, _stop.Token);
             if (result.MessageType == WebSocketMessageType.Close) return null;
+            if (message.Length + result.Count > MaxMessageBytes)
+            {
+                await CloseTooBigAsync(socket);
+                throw new InvalidDataException("Extension message is too big.");
+            }
             message.Write(buffer, 0, result.Count);
         }
         while (!result.EndOfMessage);

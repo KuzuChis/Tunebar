@@ -25,9 +25,18 @@ public static class Format
     public static string PlaylistHeader(Playlist p) =>
         string.Create(CultureInfo.InvariantCulture, $"Playlist · {p.Index + 1} dari {p.Items.Count}");
 
-    /// <summary>"2 sumber lain memutar".</summary>
-    public static string OthersLabel(int count) =>
-        string.Create(CultureInfo.InvariantCulture, $"{count} sumber lain memutar");
+    /// <summary>
+    /// "2 sumber lain memutar" when all are playing, "3 sumber lain · 1 memutar" when some are,
+    /// "2 sumber lain" when none is.
+    /// </summary>
+    public static string OthersLabel(int count, int playingCount)
+    {
+        if (playingCount <= 0)
+            return string.Create(CultureInfo.InvariantCulture, $"{count} sumber lain");
+        if (playingCount == count)
+            return string.Create(CultureInfo.InvariantCulture, $"{count} sumber lain memutar");
+        return string.Create(CultureInfo.InvariantCulture, $"{count} sumber lain · {playingCount} memutar");
+    }
 
     /// <summary>Volume 0.7 becomes "70%"; boosted volume 1.5 becomes "150%".</summary>
     public static string Percent(double volume) =>
