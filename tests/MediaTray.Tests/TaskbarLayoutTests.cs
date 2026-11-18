@@ -11,7 +11,8 @@ public class TaskbarLayoutTests
         Assert.True(slot.Visible);
         Assert.Equal(12, slot.X);
         Assert.Equal(450, slot.Width);
-        Assert.Equal(72, slot.Height);
+        Assert.Equal(60, slot.Height); // 72 minus a 6 px strip top and bottom
+        Assert.Equal(6, slot.Y);
     }
 
     [Fact]
@@ -38,7 +39,8 @@ public class TaskbarLayoutTests
         var slot = TaskbarLayout.Compute(1920, 48, 900, 1.0);
         Assert.Equal(8, slot.X);
         Assert.Equal(300, slot.Width);
-        Assert.Equal(48, slot.Height);
+        Assert.Equal(40, slot.Height);
+        Assert.Equal(4, slot.Y);
     }
 
     [Fact]

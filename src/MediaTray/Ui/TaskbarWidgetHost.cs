@@ -140,7 +140,7 @@ public sealed class TaskbarWidgetHost : IDisposable
         _trayLeftPx = state.Left;
         if (slot != _slot)
         {
-            SetWindowPos(hwnd, IntPtr.Zero, slot.X, 0, slot.Width, slot.Height, SwpNoActivate);
+            SetWindowPos(hwnd, IntPtr.Zero, slot.X, slot.Y, slot.Width, slot.Height, SwpNoActivate);
             _slot = slot;
         }
         KeepOnTop(hwnd);
@@ -173,7 +173,7 @@ public sealed class TaskbarWidgetHost : IDisposable
             SetWindowLongPtr(hwnd, GwlStyle, (IntPtr)(WsChild | WsVisible | WsClipSiblings));
             if (SetParent(hwnd, state.Handle) == IntPtr.Zero)
                 throw new InvalidOperationException($"SetParent failed ({Marshal.GetLastWin32Error()})");
-            SetWindowPos(hwnd, IntPtr.Zero, slot.X, 0, slot.Width, slot.Height, SwpNoActivate | SwpFrameChanged);
+            SetWindowPos(hwnd, IntPtr.Zero, slot.X, slot.Y, slot.Width, slot.Height, SwpNoActivate | SwpFrameChanged);
 
             _source = source;
             _widget = widget;
