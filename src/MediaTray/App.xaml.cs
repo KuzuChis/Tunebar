@@ -1,4 +1,5 @@
-﻿using System.Windows;
+using System.IO;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using H.NotifyIcon;
@@ -22,6 +23,7 @@ public partial class App : Application
     private SmtcProvider? _smtc;
     private TaskbarIcon? _tray;
     private PopupWindow? _popup;
+    private AutoStart? _autoStart;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -38,6 +40,9 @@ public partial class App : Application
         }
 
         Theme.Apply(this);
+
+        _autoStart = CreateAutoStart();
+        _autoStart.ApplyFirstRunDefault();
 
         var registry = new SourceRegistry(() => DateTimeOffset.Now);
 
@@ -86,6 +91,14 @@ public partial class App : Application
         }
     }
 
+    /// <summary>The production auto-start: this exe, the user's Run key, settings in %LOCALAPPDATA%\MediaTray.</summary>
+    private static AutoStart CreateAutoStart()
+    {
+        var settingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MediaTray", "settings.json");
+        return new AutoStart(AutoStart.DefaultRunKeyPath, settingsPath, Environment.ProcessPath ?? "");
+    }
+
     private static async Task<SmtcProvider?> TryCreateSmtcAsync()
     {
         try
@@ -104,6 +117,22 @@ public partial class App : Application
         var iconColor = Theme.TaskbarIsLight() ? Brushes.Black : Brushes.White;
 
         var menu = new ContextMenu();
+
+        var autoStartItem = new MenuItem
+        {
+            Header = "Jalankan saat Windows mulai",
+            IsCheckable = true,
+            IsChecked = _autoStart?.IsEnabled ?? false,
+        };
+        autoStartItem.Click += (_, _) =>
+        {
+            if (_autoStart is null) return;
+            _autoStart.SetEnabled(!_autoStart.IsEnabled);
+            autoStartItem.IsChecked = _autoStart.IsEnabled;
+        };
+        menu.Items.Add(autoStartItem);
+        menu.Items.Add(new Separator());
+
         var exitItem = new MenuItem { Header = "Keluar" };
         exitItem.Click += (_, _) => ExitFromMenu();
         menu.Items.Add(exitItem);
