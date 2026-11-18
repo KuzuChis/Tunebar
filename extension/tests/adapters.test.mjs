@@ -55,7 +55,7 @@ test("youtube: 3-item panel, 2nd selected; jump bounds", () => {
   assert.equal(s.jump(2), true);
 });
 
-test("ytmusic: repeat-mode ALL, loop cycling, queue", () => {
+test("ytmusic: repeat-mode ALL, loop cycling, queue", async () => {
   const bar = el();
   let mode = "ALL";
   bar.getAttribute = (k) => (k === "repeat-mode" ? mode : null);
@@ -71,7 +71,7 @@ test("ytmusic: repeat-mode ALL, loop cycling, queue", () => {
     });
   const q = "ytmusic-player-queue#queue #contents > ytmusic-player-queue-item";
   const s = load("ytmusic.js", { "ytmusic-player-bar": bar, "ytmusic-player-bar .repeat": repeat, [q]: [item("A"), item("B", true)] });
-  assert.equal(s.setLoopPlaylist(true), true);
+  assert.equal(await s.setLoopPlaylist(true), true);
   assert.equal(repeat.clicks, 1);
   assert.equal(s.getPlaylist().index, 1);
   assert.equal(s.jump(99), false);
