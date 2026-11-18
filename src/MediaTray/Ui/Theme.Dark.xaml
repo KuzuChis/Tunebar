@@ -1,0 +1,11 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Colors for Windows dark mode. The accent brush is added in code (Theme.cs). -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#2C2C2C" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#383838" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#454545" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C5C5C5" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#9A9A9A" />
+    <SolidColorBrush x:Key="TrackBrush" Color="#5A5A5A" />
+</ResourceDictionary>
