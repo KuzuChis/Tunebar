@@ -27,6 +27,8 @@ public partial class App : Application
     private TaskbarIcon? _tray;
     private PopupWindow? _popup;
     private AutoStart? _autoStart;
+    private WidgetSettings? _widgetSettings;
+    private TaskbarWidgetHost? _widgetHost;
 
     [DllImport("kernel32.dll")]
     private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
@@ -90,6 +92,11 @@ public partial class App : Application
         {
             if (args.NewValue is false) TrimWorkingSet();
         };
+
+        _widgetSettings = new WidgetSettings(WidgetSettings.DefaultPath);
+        var widgetHost = new TaskbarWidgetHost(viewModel, _widgetSettings.ShowInTaskbar);
+        widgetHost.OpenPopupRequested += (_, _) => _popup?.Toggle(widgetHost.WidgetLeftDip);
+        _widgetHost = widgetHost;
 
         _tray = CreateTrayIcon();
         if (portInUse)
@@ -176,6 +183,20 @@ public partial class App : Application
 
         var menu = new ContextMenu();
 
+        var widgetItem = new MenuItem
+        {
+            Header = "Tampilkan di taskbar",
+            IsCheckable = true,
+            IsChecked = _widgetSettings?.ShowInTaskbar ?? true,
+        };
+        widgetItem.Click += (_, _) =>
+        {
+            // IsCheckable has already flipped the check mark by the time Click runs.
+            if (_widgetHost is not null) _widgetHost.Enabled = widgetItem.IsChecked;
+            _widgetSettings?.Save(widgetItem.IsChecked);
+        };
+        menu.Items.Add(widgetItem);
+
         var autoStartItem = new MenuItem
         {
             Header = "Jalankan saat Windows mulai",
@@ -233,6 +254,8 @@ public partial class App : Application
 
     private void Cleanup()
     {
+        _widgetHost?.Dispose();
+        _widgetHost = null;
         _tray?.Dispose();
         _tray = null;
         _server?.Dispose();

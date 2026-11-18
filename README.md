@@ -2,7 +2,8 @@
 
 Ikon kecil di system tray Windows 11 untuk mengontrol musik yang sedang diputar
 (tab YouTube / YouTube Music di Opera, Spotify, dan app lain) tanpa membuka
-jendela app-nya. Desain: [docs/superpowers/specs/2026-11-18-media-tray-design.md](docs/superpowers/specs/2026-11-18-media-tray-design.md).
+jendela app-nya. Selain ikon tray, ada widget kecil (cover, judul, tombol ⏮ ⏯ ⏭) di ujung
+kiri taskbar supaya kontrol cukup satu klik. Desain: [docs/superpowers/specs/2026-11-18-media-tray-design.md](docs/superpowers/specs/2026-11-18-media-tray-design.md).
 
 ## Kebutuhan
 
@@ -39,6 +40,7 @@ Klik ikon ekstensi di toolbar Opera untuk mengembalikan volume tab aktif ke 100%
 
 ## Batasan yang diketahui
 
-- Popup selalu muncul di pojok kanan bawah monitor utama.
+- Popup selalu muncul di monitor utama: di pojok kanan bawah, atau di atas widget bila dibuka dari widget.
+- Widget taskbar hanya muncul di taskbar bawah monitor utama, dengan ikon taskbar rata tengah dan tombol Widgets mati. Selain itu hanya ada ikon tray. Widget bisa dimatikan lewat menu tray "Tampilkan di taskbar".
 - Setelah ekstensi di-reload atau diperbarui, muat ulang (reload) tab YouTube yang sedang terbuka agar tersambung kembali.
 - Gambar sampul dimuat dari server gambar YouTube (`i.ytimg.com` dan sejenisnya), jadi butuh koneksi internet.

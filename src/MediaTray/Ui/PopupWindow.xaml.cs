@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using MediaTray.Core;
+using MediaTray.Windows;
 
 namespace MediaTray.Ui;
 
@@ -29,6 +30,7 @@ public partial class PopupWindow : Window
     private bool _seekDragging;
     private bool _volumeDragging;
     private long _lastDeactivateTick;
+    private double? _anchorLeftDip;   // left edge to line up with (the taskbar widget); null = bottom right
 
     public PopupWindow(PopupViewModel viewModel)
     {
@@ -41,7 +43,7 @@ public partial class PopupWindow : Window
 
         SourceInitialized += (_, _) => RoundCorners();
         Deactivated += OnDeactivated;
-        SizeChanged += (_, _) => { if (IsVisible) PositionBottomRight(); };
+        SizeChanged += (_, _) => { if (IsVisible) Reposition(); };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
         viewModel.PropertyChanged += OnViewModelChanged;
 
@@ -50,8 +52,11 @@ public partial class PopupWindow : Window
 
     // ---- Showing and hiding ----
 
-    /// <summary>Shows the popup, or hides it when it is already open.</summary>
-    public void Toggle()
+    /// <summary>
+    /// Shows the popup, or hides it when it is already open.
+    /// With an anchor the popup's left edge lines up with it (the taskbar widget); without one it sits bottom right.
+    /// </summary>
+    public void Toggle(double? anchorLeftDip = null)
     {
         if (IsVisible)
         {
@@ -63,10 +68,11 @@ public partial class PopupWindow : Window
         // the same click would immediately open the popup again.
         if (Stopwatch.GetElapsedTime(_lastDeactivateTick) < ReopenGuard) return;
 
-        PositionBottomRight();
+        _anchorLeftDip = anchorLeftDip;
+        Reposition();
         Show();
         UpdateLayout();
-        PositionBottomRight();
+        Reposition();
         Activate();
         SyncSliders();
         ScrollToCurrentSong();
@@ -78,11 +84,13 @@ public partial class PopupWindow : Window
         Hide();
     }
 
-    private void PositionBottomRight()
+    private void Reposition()
     {
-        var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - ScreenMargin;
-        Top = area.Bottom - ActualHeight - ScreenMargin;
+        var screen = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+        var position = PopupPlacement.Compute(SystemParameters.WorkArea, screen, TaskbarWatcher.TaskbarHeightDip(),
+            ActualWidth, ActualHeight, _anchorLeftDip, ScreenMargin);
+        Left = position.X;
+        Top = position.Y;
     }
 
     // ---- Rounded corners (Windows 11) ----
