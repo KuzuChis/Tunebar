@@ -183,3 +183,47 @@ tidak mendukung loop sama sekali, tombol disembunyikan.
 - Selektor DOM / cara memanggil player YouTube untuk next/prev/playlist.
 - Cara menyimpan setelan kecil (mis. auto-start) — registry/JSON lokal.
 - Interval polling posisi lagu.
+
+## 9. Tambahan v1.1 — Widget di taskbar (disetujui pengguna 2026-11-18)
+
+### Alasan
+Ikon tray baru di Windows 11 selalu masuk menu tersembunyi (^), jadi pause/next
+butuh 3 klik. Tujuan awal pengguna adalah kontrol **langsung di taskbar, satu
+klik**. Taskbar pengguna rata tengah dan sisi kirinya selalu kosong (Widgets
+tidak dipakai).
+
+### Yang diputuskan pengguna
+- Widget ditempel di **ujung kiri taskbar** (area kosong).
+- Isi: **cover + judul (+ artis) + ⏮ ⏯ ⏭**.
+- Cara: jendela kecil dijadikan *child window* dari taskbar (`Shell_TrayWnd`),
+  teknik yang juga dipakai TrafficMonitor — bukan jendela mengambang.
+
+### Perilaku (keputusan leader, bisa dikoreksi)
+- Lebar ±300 px (DIP), tinggi = tinggi taskbar, rata kiri dengan margin 8 px.
+  Bila ruang sampai tombol Start kurang, widget menyusut (judul dipotong);
+  di bawah ±120 px widget disembunyikan.
+- Isi dari kiri: cover 32×32 (sudut 4), judul (1 baris, terpotong …) dengan
+  artis kecil di bawahnya, lalu ⏮ ⏯ ⏭ (tombol 32 px). Latar transparan
+  menyatu dengan taskbar; hover = sorotan halus seperti tombol taskbar.
+  Warna teks mengikuti tema taskbar (terang/gelap).
+- Klik ⏮ ⏯ ⏭ → langsung ke sumber yang sedang tampil (Current, termasuk yang
+  di-lock). Klik cover/judul → buka popup lengkap (layout A) di atas widget,
+  pojok kiri bawah. Ikon gembok kecil tampil di widget saat terkunci.
+- Tidak ada yang diputar → widget tampil redup: ikon musik + "Tidak ada yang
+  diputar"; tombol disembunyikan.
+- Ikon tray tetap ada (menu klik kanan + cadangan). Menu tray dapat item baru
+  **"Tampilkan di taskbar"** (centang, default aktif).
+- Widget tidak ditampilkan (cadangan ke ikon tray saja) bila: ikon taskbar
+  diatur rata kiri, tombol Widgets aktif, atau taskbar tidak ditemukan.
+- Explorer restart / taskbar dibuat ulang → widget menempel ulang otomatis.
+- Hanya taskbar monitor utama. Taskbar auto-hide → widget ikut tersembunyi.
+
+### Bukan sasaran
+- Menggeser/menyusun ulang ikon taskbar lain; taskbar monitor kedua;
+  Windows 10.
+
+### Risiko
+- Update besar Windows bisa mengubah struktur taskbar → widget gagal tempel;
+  app harus tetap jalan (ikon tray) tanpa crash.
+- Risiko teknis utama dibuktikan dulu lewat spike: jendela WPF transparan
+  sebagai child lintas-proses dari `Shell_TrayWnd` menerima klik dengan benar.
