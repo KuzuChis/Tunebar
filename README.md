@@ -26,7 +26,7 @@ dotnet run --project src/MediaTray
 
 ```powershell
 dotnet test MediaTray.sln
-node --test extension/tests/
+node --test "extension/tests/*.test.mjs"
 ```
 
 ## Memasang ekstensi di Opera

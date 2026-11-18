@@ -339,9 +339,9 @@ media.js: elemen `document.querySelector("video")`; laporkan state tiap 1 detik 
   - `canAttachGain`: `{false,"running"}`→false, `{true,"suspended"}`→false, `{true,"running"}`→true
   - `createGainTracker`: objek sama attached setelah mark; objek lain tidak
   - `buildSnapshot`: map {5:…, 2:…} → tabs urut [2,5], `type=="tabs"`
-- [ ] **Step 2:** `node --test extension/tests/` → FAIL
+- [ ] **Step 2:** `node --test "extension/tests/*.test.mjs"` → FAIL
 - [ ] **Step 3:** implementasi `lib/core.js`, lalu `background.js`, `media.js`, `manifest.json`.
-- [ ] **Step 4:** `node --test extension/tests/` → PASS; load unpacked di Opera tanpa error di halaman extensions.
+- [ ] **Step 4:** `node --test "extension/tests/*.test.mjs"` → PASS; load unpacked di Opera tanpa error di halaman extensions.
 - [ ] **Step 5 (leader):** commit `feat(extension): bridge service worker and standard media control`
 
 ### Task 8: Adapter situs YouTube & YouTube Music
@@ -425,7 +425,7 @@ public sealed class AutoStart {
 
 ### Task 11: Verifikasi ujung-ke-ujung (leader + pengguna)
 
-- [ ] `dotnet test MediaTray.sln` dan `node --test extension/tests/` → semua PASS.
+- [ ] `dotnet test MediaTray.sln` dan `node --test "extension/tests/*.test.mjs"` → semua PASS.
 - [ ] `dotnet publish src/MediaTray -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true` → satu `MediaTray.exe`.
 - [ ] Skenario di Opera (3 tab seperti uji awal: video, playlist YT, YT Music):
   1. Popup menampilkan tab yang terakhir mulai memutar; "2 sumber lain memutar" terbuka dan berisi dua tab lain.
