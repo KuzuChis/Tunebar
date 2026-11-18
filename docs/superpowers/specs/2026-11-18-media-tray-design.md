@@ -216,7 +216,9 @@ tidak dipakai).
 - Widget tidak ditampilkan (cadangan ke ikon tray saja) bila: ikon taskbar
   diatur rata kiri, tombol Widgets aktif, atau taskbar tidak ditemukan.
 - Explorer restart / taskbar dibuat ulang → widget menempel ulang otomatis.
-- Hanya taskbar monitor utama. Taskbar auto-hide → widget ikut tersembunyi.
+- Hanya taskbar monitor utama. Taskbar auto-hide (dipakai pengguna) → widget ikut
+  muncul/sembunyi bersama taskbar; popup diposisikan di atas taskbar yang sedang
+  tampil, bukan di dasar work area (yang pada auto-hide = dasar layar).
 
 ### Bukan sasaran
 - Menggeser/menyusun ulang ikon taskbar lain; taskbar monitor kedua;
