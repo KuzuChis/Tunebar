@@ -1,7 +1,7 @@
-// Media Tray bridge service worker: collects tab state, relays it to the tray app over
+﻿// Tunebar bridge service worker: collects tab state, relays it to the tray app over
 // a local WebSocket, and forwards tray commands to tabs.
 importScripts("lib/core.js");
-const { nextDelay, buildSnapshot, pruneStale } = globalThis.MediaTrayCore;
+const { nextDelay, buildSnapshot, pruneStale } = globalThis.TunebarCore;
 
 const URL_WS = "ws://localhost:47821";
 const SEND_THROTTLE_MS = 250;
@@ -75,7 +75,7 @@ function connect() {
   const onEnd = () => {
     if (socket !== ws) return;
     socket = null;
-    if (wasOpen) console.info("Media Tray: tray connection lost, will retry");
+    if (wasOpen) console.info("Tunebar: tray connection lost, will retry");
     wasOpen = false;
     scheduleReconnect();
   };

@@ -1,4 +1,4 @@
-// Pure helpers shared by content scripts, the service worker (importScripts) and node tests.
+﻿// Pure helpers shared by content scripts, the service worker (importScripts) and node tests.
 // Classic script: no browser APIs, no modules.
 (function () {
   function nextDelay(attempt) {
@@ -49,7 +49,7 @@
     return { type: "tabs", tabs };
   }
 
-  globalThis.MediaTrayCore = {
+  globalThis.TunebarCore = {
     nextDelay, clampVolume, finiteOrNull, canAttachGain, createGainTracker, buildSnapshot,
     pruneStale,
   };

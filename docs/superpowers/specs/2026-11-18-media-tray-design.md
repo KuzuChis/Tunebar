@@ -1,4 +1,4 @@
-# Media Tray — Desain
+﻿# Tunebar — Desain
 
 Tanggal: 2026-11-18
 Status: disetujui pengguna (2026-11-18)
@@ -9,7 +9,7 @@ Pengguna sering memutar musik di tab YouTube / YouTube Music di Opera sambil
 membuka tab lain (video, dll). Untuk pause/next lagu sekarang ia harus
 berpindah ke jendela Opera dan mencari tab musiknya. Itu ribet.
 
-Media Tray adalah ikon kecil di system tray Windows 11. Satu klik membuka
+Tunebar adalah ikon kecil di system tray Windows 11. Satu klik membuka
 popup untuk mengontrol musik **tanpa membuka jendela app yang memutarnya**.
 Ia otomatis mengikuti apa yang sedang memutar (Spotify, browser, app lain),
 dan bisa **di-lock** ke satu sumber sehingga tombolnya tidak pindah ke video
@@ -124,7 +124,7 @@ tidak mendukung loop sama sekali, tombol disembunyikan.
 ```
  Opera
  ┌──────────────────────────────┐         ┌────────────────────────────┐
- │ content script per tab YT    │         │ MediaTray.exe (WPF, tray)  │
+ │ content script per tab YT    │         │ Tunebar.exe (WPF, tray)  │
  │  - baca status <video>       │         │  - WebSocket server         │
  │  - GainNode volume           │◄──────► │    127.0.0.1:<port>         │
  │  - baca playlist DOM         │  WS     │  - SMTC (app lain)          │

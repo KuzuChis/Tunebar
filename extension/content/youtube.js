@@ -1,4 +1,4 @@
-// YouTube adapter. Selectors from live-page recon 2026-11-18; update here when YouTube changes.
+﻿// YouTube adapter. Selectors from live-page recon 2026-11-18; update here when YouTube changes.
 // State is read from structure (icon path markers), never from localized labels.
 (() => {
   const PANEL = "ytd-watch-flexy ytd-playlist-panel-renderer#playlist";
@@ -47,7 +47,7 @@
     return "off";
   }
 
-  globalThis.MediaTraySite = {
+  globalThis.TunebarSite = {
     site: "youtube",
     next: () => click(".ytp-next-button"),
     prev: () => click(".ytp-prev-button"),

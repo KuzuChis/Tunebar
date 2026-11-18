@@ -1,4 +1,4 @@
-// Content script: reports the page's media state to the service worker and runs commands.
+﻿// Content script: reports the page's media state to the service worker and runs commands.
 //
 // Gain safety rule (volume > 100% / < 100%): createMediaElementSource() permanently moves a
 // <video>'s sound into Web Audio, so if the AudioContext is not running the tab goes silent.
@@ -13,9 +13,9 @@
 // Reported volume: the gain value when the graph is attached; null only while an attach for a
 // volume other than 1.0 is failing (context not running); otherwise 1.
 (function () {
-  const { clampVolume, finiteOrNull, canAttachGain, createGainTracker } = globalThis.MediaTrayCore;
-  const site = globalThis.MediaTraySite || {};
-  const VOLUME_KEY = "mediaTray.volume";
+  const { clampVolume, finiteOrNull, canAttachGain, createGainTracker } = globalThis.TunebarCore;
+  const site = globalThis.TunebarSite || {};
+  const VOLUME_KEY = "tunebar.volume";
   const TITLE_SUFFIXES = [" - YouTube Music", " - YouTube"];
 
   const tracker = createGainTracker();

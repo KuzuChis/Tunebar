@@ -1,4 +1,4 @@
-// YouTube Music adapter. Selectors from live-page recon 2026-11-18; update here when YT Music changes.
+﻿// YouTube Music adapter. Selectors from live-page recon 2026-11-18; update here when YT Music changes.
 // Loop state comes from the player bar's repeat-mode attribute (NONE | ALL | ONE), not labels.
 (() => {
   const BAR = "ytmusic-player-bar";
@@ -49,7 +49,7 @@
     return bar ? bar.getAttribute("repeat-mode") : null;
   };
 
-  globalThis.MediaTraySite = {
+  globalThis.TunebarSite = {
     site: "ytmusic",
     next: () => click(BAR + " .next-button"),
     prev: () => click(BAR + " .previous-button"),

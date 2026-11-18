@@ -1,4 +1,4 @@
-# Media Tray — Rencana Implementasi
+﻿# Tunebar — Rencana Implementasi
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -18,7 +18,7 @@
 - Origin yang diizinkan: tepat `chrome-extension://<ExtensionIdentity.Id>`; selain itu tolak dengan HTTP 403.
 - Volume: tab YouTube 0–1.5 (0–150%); app non-browser 0–1.0; browser lewat SMTC → volume `null` (slider disembunyikan).
 - Loop: siklus `Off → Playlist → One → Off`, lewati mode yang tidak didukung; daftar dukungan kosong → tombol disembunyikan.
-- Volume tab disimpan di `sessionStorage` kunci `mediaTray.volume`; tidak di-reset saat koneksi putus; klik ikon ekstensi → tab aktif kembali ke 1.0.
+- Volume tab disimpan di `sessionStorage` kunci `tunebar.volume`; tidak di-reset saat koneksi putus; klik ikon ekstensi → tab aktif kembali ke 1.0.
 - Tidak ada koneksi jaringan selain localhost. Tidak ada telemetri.
 - Teks UI dalam Bahasa Indonesia, persis seperti di spec ("Terkunci", "Playlist · 3 dari 12", "N sumber lain memutar", "Jalankan saat Windows mulai", "Keluar").
 - Kode untuk pemula C#: nama jelas, satu tanggung jawab per file, komentar `///` singkat di setiap class publik.
@@ -38,9 +38,9 @@
 
 ```
 media-tray/
-  MediaTray.sln
-  src/MediaTray/
-    MediaTray.csproj
+  Tunebar.sln
+  src/Tunebar/
+    Tunebar.csproj
     App.xaml, App.xaml.cs            composition root, single instance, tray icon
     Core/MediaSource.cs              record + enum SourceKind, LoopMode, Playlist
     Core/LoopCycle.cs                siklus tombol loop
@@ -59,8 +59,8 @@ media-tray/
     Ui/PopupWindow.xaml(.cs)
     Ui/Theme.cs                      baca tema terang/gelap Windows
     Assets/tray.ico
-  tests/MediaTray.Tests/
-    MediaTray.Tests.csproj
+  tests/Tunebar.Tests/
+    Tunebar.Tests.csproj
     LoopCycleTests.cs FormatTests.cs ProtocolTests.cs SourceRegistryTests.cs
     AumidMapperTests.cs OriginValidatorTests.cs ExtensionServerTests.cs
     AutoStartTests.cs PopupViewModelTests.cs
@@ -100,26 +100,26 @@ Content script ↔ service worker: `chrome.runtime.sendMessage({type:"state", st
 ### Task 1: Setup toolchain, solusi, dan repo
 
 **Files:**
-- Create: `MediaTray.sln`, `src/MediaTray/MediaTray.csproj`, `src/MediaTray/App.xaml(.cs)` (template), `tests/MediaTray.Tests/MediaTray.Tests.csproj`, `README.md`, `.gitignore`
+- Create: `Tunebar.sln`, `src/Tunebar/Tunebar.csproj`, `src/Tunebar/App.xaml(.cs)` (template), `tests/Tunebar.Tests/Tunebar.Tests.csproj`, `README.md`, `.gitignore`
 
 - [ ] **Step 1 (leader, butuh izin user): install .NET 10 SDK**
 Run: `winget install --id Microsoft.DotNet.SDK.10 -e`
 Expected: `dotnet --list-sdks` menampilkan `10.0.x`.
 - [ ] **Step 2: buat solusi**
-`dotnet new sln -n MediaTray`; `dotnet new wpf -n MediaTray -o src/MediaTray`; `dotnet new xunit -n MediaTray.Tests -o tests/MediaTray.Tests`; tambahkan keduanya ke sln; tes mereferensikan app. Set TargetFramework kedua csproj ke `net10.0-windows10.0.19041.0`, Nullable enable. Tambah paket ke app: `H.NotifyIcon.Wpf`, `NAudio`.
+`dotnet new sln -n Tunebar`; `dotnet new wpf -n Tunebar -o src/Tunebar`; `dotnet new xunit -n Tunebar.Tests -o tests/Tunebar.Tests`; tambahkan keduanya ke sln; tes mereferensikan app. Set TargetFramework kedua csproj ke `net10.0-windows10.0.19041.0`, Nullable enable. Tambah paket ke app: `H.NotifyIcon.Wpf`, `NAudio`.
 - [ ] **Step 3: verifikasi**
-Run: `dotnet build MediaTray.sln` lalu `dotnet test MediaTray.sln`
+Run: `dotnet build Tunebar.sln` lalu `dotnet test Tunebar.sln`
 Expected: build sukses 0 error; tes template lulus (hapus tes template setelahnya).
-- [ ] **Step 4: README** — langkah install SDK, `dotnet run --project src/MediaTray`, cara "Load unpacked" folder `extension/` di `opera://extensions` (mode developer).
+- [ ] **Step 4: README** — langkah install SDK, `dotnet run --project src/Tunebar`, cara "Load unpacked" folder `extension/` di `opera://extensions` (mode developer).
 - [ ] **Step 5 (leader): `git init`, `.gitignore` (bin/ obj/ .vs/ node_modules/), commit spec + plan + skeleton**: `chore: scaffold media tray solution`
 
 ### Task 2: Model inti, LoopCycle, Format
 
-**Files:** Create `src/MediaTray/Core/MediaSource.cs`, `Core/LoopCycle.cs`, `Core/Format.cs`; Test `tests/MediaTray.Tests/LoopCycleTests.cs`, `FormatTests.cs`
+**Files:** Create `src/Tunebar/Core/MediaSource.cs`, `Core/LoopCycle.cs`, `Core/Format.cs`; Test `tests/Tunebar.Tests/LoopCycleTests.cs`, `FormatTests.cs`
 
 **Interfaces — Produces:**
 ```csharp
-namespace MediaTray.Core;
+namespace Tunebar.Core;
 public enum SourceKind { ExtensionTab, Smtc }
 public enum LoopMode { Off, Playlist, One }
 public sealed record PlaylistItem(string Title, string? Artist);
@@ -168,7 +168,7 @@ Format: `Time(84.2)=="1:24"`, `Time(3725)=="1:02:05"`, `Time(null)=="--:--"`, `T
 
 ### Task 3: SourceRegistry (gabung, dedupe, pilih, lock)
 
-**Files:** Create `src/MediaTray/Core/SourceRegistry.cs`; Test `tests/MediaTray.Tests/SourceRegistryTests.cs`
+**Files:** Create `src/Tunebar/Core/SourceRegistry.cs`; Test `tests/Tunebar.Tests/SourceRegistryTests.cs`
 
 **Interfaces:**
 - Consumes: `MediaSource` (Task 2)
@@ -207,7 +207,7 @@ Aturan (dari spec §7 "Model sumber"): catat `StartedAt` per id saat `IsPlaying`
 
 ### Task 4: Protokol JSON + antarmuka perintah
 
-**Files:** Create `src/MediaTray/Core/Protocol.cs`, `Core/ISourceCommands.cs`; Test `tests/MediaTray.Tests/ProtocolTests.cs`
+**Files:** Create `src/Tunebar/Core/Protocol.cs`, `Core/ISourceCommands.cs`; Test `tests/Tunebar.Tests/ProtocolTests.cs`
 
 **Interfaces:**
 - Consumes: Task 2 types.
@@ -243,7 +243,7 @@ Pemetaan tab → MediaSource: `Id="tab:"+tabId`, `Kind=ExtensionTab`, `AppName="
 
 ### Task 5: ExtensionServer + OriginValidator + kunci ekstensi
 
-**Files:** Create `extension/tools/gen-key.mjs`, `src/MediaTray/Bridge/ExtensionIdentity.cs`, `Bridge/OriginValidator.cs`, `Bridge/ExtensionServer.cs`; Test `OriginValidatorTests.cs`, `ExtensionServerTests.cs`
+**Files:** Create `extension/tools/gen-key.mjs`, `src/Tunebar/Bridge/ExtensionIdentity.cs`, `Bridge/OriginValidator.cs`, `Bridge/ExtensionServer.cs`; Test `OriginValidatorTests.cs`, `ExtensionServerTests.cs`
 
 **Interfaces:**
 - Consumes: `Protocol`, `ISourceCommands` (Task 4)
@@ -276,7 +276,7 @@ Server: `HttpListener` prefix `http://localhost:{port}/`; terima hanya request W
 
 ### Task 6: Sumber Windows — AumidMapper, AppVolumeController, SmtcProvider
 
-**Files:** Create `src/MediaTray/Windows/AumidMapper.cs`, `AppVolumeController.cs`, `SmtcProvider.cs`; Test `AumidMapperTests.cs`
+**Files:** Create `src/Tunebar/Windows/AumidMapper.cs`, `AppVolumeController.cs`, `SmtcProvider.cs`; Test `AumidMapperTests.cs`
 
 **Interfaces:**
 - Consumes: `MediaSource`, `ISourceCommands`, `LoopMode`
@@ -314,10 +314,10 @@ SmtcProvider: `Id="smtc:"+aumid`, `OriginLabel=AppName`, cover dari `Thumbnail` 
 **Files:** Create `extension/manifest.json`, `background.js`, `lib/core.js`, `content/media.js`, `tests/core.test.mjs`
 
 **Interfaces:**
-- Consumes: Protokol (bagian atas); `key` dari Task 5; adapter situs dari Task 8 lewat `globalThis.MediaTraySite` (boleh belum ada → fitur terkait dianggap tidak didukung).
+- Consumes: Protokol (bagian atas); `key` dari Task 5; adapter situs dari Task 8 lewat `globalThis.TunebarSite` (boleh belum ada → fitur terkait dianggap tidak didukung).
 - Produces:
 ```js
-// lib/core.js — dipasang ke globalThis.MediaTrayCore (dipakai content script & service worker via importScripts)
+// lib/core.js — dipasang ke globalThis.TunebarCore (dipakai content script & service worker via importScripts)
 nextDelay(attempt)            // min(1000 * 2**attempt, 15000)
 clampVolume(v)                // NaN/undefined → 1; batasi 0..1.5
 finiteOrNull(x)               // angka terhingga atau null
@@ -325,14 +325,14 @@ canAttachGain({hasBeenActive, contextState})  // true hanya bila hasBeenActive &
 createGainTracker()           // { isAttached(el), markAttached(el) } berbasis WeakSet
 buildSnapshot(tabsById)       // {type:"tabs", tabs:[...]} urut tabId naik
 // Kontrak adapter situs (diisi Task 8):
-// globalThis.MediaTraySite = { site, next():bool, prev():bool, canNext():bool, canPrev():bool,
+// globalThis.TunebarSite = { site, next():bool, prev():bool, canNext():bool, canPrev():bool,
 //   getPlaylist():{index,items}|null, jump(i):bool, getLoopPlaylist():bool|null, setLoopPlaylist(on):bool }
 ```
-manifest: MV3, `name` "Media Tray Bridge", `key`, `permissions:["tabs"]`, `host_permissions` youtube + music.youtube, `background.service_worker:"background.js"`, `action.default_title:"Media Tray — klik untuk reset volume tab ini ke 100%"`, content_scripts: youtube `["lib/core.js","content/youtube.js","content/media.js"]`, ytmusic `["lib/core.js","content/ytmusic.js","content/media.js"]`, `run_at:"document_idle"`.
+manifest: MV3, `name` "Tunebar Bridge", `key`, `permissions:["tabs"]`, `host_permissions` youtube + music.youtube, `background.service_worker:"background.js"`, `action.default_title:"Tunebar — klik untuk reset volume tab ini ke 100%"`, content_scripts: youtube `["lib/core.js","content/youtube.js","content/media.js"]`, ytmusic `["lib/core.js","content/ytmusic.js","content/media.js"]`, `run_at:"document_idle"`.
 background.js: `importScripts("lib/core.js")`; WebSocket ke `ws://localhost:47821`; reconnect pakai `nextDelay`; kirim snapshot pada setiap state masuk dan tiap 20 detik; hapus tab saat `chrome.tabs.onRemoved`; teruskan command ke tab; `chrome.action.onClicked` → command `volume` 1.0 ke tab itu. Error koneksi tidak di-`console.error` berulang (cukup satu `console.info` per putus).
-media.js: elemen `document.querySelector("video")`; laporkan state tiap 1 detik saat memutar, tiap 5 detik saat jeda, dan segera pada event `play/pause/loadedmetadata/volumechange`. Judul/artis/cover dari `navigator.mediaSession.metadata`, fallback `document.title` tanpa akhiran `" - YouTube"`. Kontrol: toggle (`play()/pause()`), seek (`currentTime`), loop one (`video.loop`), volume via GainNode sesuai Review Focus 1–2, simpan ke `sessionStorage["mediaTray.volume"]` dan terapkan ulang saat load bila `canAttachGain`. `loopModes` = `["off","one"]` ditambah `"playlist"` bila `getLoopPlaylist()!==null` (urutan off, playlist, one). Semua panggilan adapter dibungkus try/catch → gagal = fitur tidak didukung.
+media.js: elemen `document.querySelector("video")`; laporkan state tiap 1 detik saat memutar, tiap 5 detik saat jeda, dan segera pada event `play/pause/loadedmetadata/volumechange`. Judul/artis/cover dari `navigator.mediaSession.metadata`, fallback `document.title` tanpa akhiran `" - YouTube"`. Kontrol: toggle (`play()/pause()`), seek (`currentTime`), loop one (`video.loop`), volume via GainNode sesuai Review Focus 1–2, simpan ke `sessionStorage["tunebar.volume"]` dan terapkan ulang saat load bila `canAttachGain`. `loopModes` = `["off","one"]` ditambah `"playlist"` bila `getLoopPlaylist()!==null` (urutan off, playlist, one). Semua panggilan adapter dibungkus try/catch → gagal = fitur tidak didukung.
 
-- [ ] **Step 1: tes gagal** `tests/core.test.mjs` (muat `lib/core.js` ke `vm` context, ambil `MediaTrayCore`):
+- [ ] **Step 1: tes gagal** `tests/core.test.mjs` (muat `lib/core.js` ke `vm` context, ambil `TunebarCore`):
   - `nextDelay`: 0→1000, 1→2000, 3→8000, 10→15000
   - `clampVolume`: NaN→1, -1→0, 2→1.5, 0.7→0.7
   - `finiteOrNull`: Infinity→null, NaN→null, 3→3
@@ -349,7 +349,7 @@ media.js: elemen `document.querySelector("video")`; laporkan state tiap 1 detik 
 **Files:** Create `extension/content/youtube.js`, `extension/content/ytmusic.js`
 
 **Interfaces:**
-- Consumes/Produces: kontrak `globalThis.MediaTraySite` (Task 7).
+- Consumes/Produces: kontrak `globalThis.TunebarSite` (Task 7).
 
 Pemilihan selektor/cara memanggil player diserahkan ke builder (spec §8), dengan batasan: playlist YouTube dibaca dari panel playlist halaman watch (`list=` di URL) — **bukan** dari saran "Up next"/autoplay; YT Music dari antrean pemutar, juga tanpa bagian saran otomatis. Next/prev memakai tombol/pemutar situs. Tiap fungsi mengembalikan `false`/`null` bila elemen tak ditemukan.
 
@@ -362,7 +362,7 @@ Pemilihan selektor/cara memanggil player diserahkan ke builder (spec §8), denga
 
 ### Task 9: Popup UI, ViewModel, tray icon, wiring
 
-**Files:** Create `src/MediaTray/Ui/PopupViewModel.cs`, `Ui/PopupWindow.xaml(.cs)`, `Ui/Theme.cs`, `Assets/tray.ico`; Modify `App.xaml`, `App.xaml.cs`; Test `PopupViewModelTests.cs`
+**Files:** Create `src/Tunebar/Ui/PopupViewModel.cs`, `Ui/PopupWindow.xaml(.cs)`, `Ui/Theme.cs`, `Assets/tray.ico`; Modify `App.xaml`, `App.xaml.cs`; Test `PopupViewModelTests.cs`
 
 **Interfaces:**
 - Consumes: `SourceRegistry` (Task 3), `ISourceCommands`/`CommandRouter` (Task 4), `ExtensionServer` (Task 5), `SmtcProvider`/`AppVolumeController` (Task 6), `Format`, `LoopCycle` (Task 2)
@@ -383,7 +383,7 @@ public sealed class PopupViewModel : INotifyPropertyChanged {
     public void LockSource(string id);               // tombol gembok di daftar sumber lain → Lock(id), jadi Current
 }
 ```
-App.xaml.cs (composition root): single instance via `Mutex` bernama `"MediaTray.SingleInstance"`; buat `SourceRegistry(() => DateTimeOffset.Now)`, `ExtensionServer(ExtensionIdentity.Port, new OriginValidator(ExtensionIdentity.Id))` (`TabsReceived`→`SetExtensionSources`, `Disconnected`→`ClearExtensionSources`), `SmtcProvider` (`SourcesChanged`→`SetSmtcSources`), `CommandRouter`; `TaskbarIcon` (H.NotifyIcon) klik kiri → tampil/sembunyi popup. Port terpakai → tampilkan balon "Port 47821 dipakai program lain" dan tetap jalan tanpa ekstensi.
+App.xaml.cs (composition root): single instance via `Mutex` bernama `"Tunebar.SingleInstance"`; buat `SourceRegistry(() => DateTimeOffset.Now)`, `ExtensionServer(ExtensionIdentity.Port, new OriginValidator(ExtensionIdentity.Id))` (`TabsReceived`→`SetExtensionSources`, `Disconnected`→`ClearExtensionSources`), `SmtcProvider` (`SourcesChanged`→`SetSmtcSources`), `CommandRouter`; `TaskbarIcon` (H.NotifyIcon) klik kiri → tampil/sembunyi popup. Port terpakai → tampilkan balon "Port 47821 dipakai program lain" dan tetap jalan tanpa ekstensi.
 Popup: layout A persis urutan spec §6; lebar 340; `WindowStyle=None`, `ResizeMode=NoResize`, `Topmost`, `ShowInTaskbar=false`; posisi pojok kanan bawah `SystemParameters.WorkArea` dengan margin 12; `Deactivated` → `Hide()`; warna dari `Theme` (registry `AppsUseLightTheme`). Slider volume: maksimum = `Current.MaxVolume`, kirim `SetVolumeAsync` dibatasi paling sering tiap 100 ms; seek dikirim saat geser selesai. Playlist: `ListBox` tinggi ±3 baris, otomatis scroll ke lagu aktif. Tanpa sumber: tampilkan "Tidak ada yang diputar".
 
 - [ ] **Step 1: tes gagal** (fake `ISourceCommands` yang mencatat panggilan, `dispatch = a => a()`):
@@ -398,23 +398,23 @@ Popup: layout A persis urutan spec §6; lebar 340; `WindowStyle=None`, `ResizeMo
   - `TogglePlayOther_targets_that_source` (bukan Current)
 - [ ] **Step 2:** `dotnet test --filter PopupViewModelTests` → FAIL
 - [ ] **Step 3:** implementasi ViewModel, lalu XAML + App wiring.
-- [ ] **Step 4:** → PASS; `dotnet run --project src/MediaTray`: ikon tray muncul, popup terbuka/tutup, Spotify (bila ada) bisa pause/next/volume.
+- [ ] **Step 4:** → PASS; `dotnet run --project src/Tunebar`: ikon tray muncul, popup terbuka/tutup, Spotify (bila ada) bisa pause/next/volume.
 - [ ] **Step 5 (leader):** commit `feat(ui): tray icon and popup`
 
 ### Task 10: Auto-start dan menu klik kanan
 
-**Files:** Create `src/MediaTray/Windows/AutoStart.cs`; Modify `App.xaml.cs`; Test `AutoStartTests.cs`
+**Files:** Create `src/Tunebar/Windows/AutoStart.cs`; Modify `App.xaml.cs`; Test `AutoStartTests.cs`
 
 **Interfaces:**
 ```csharp
 public sealed class AutoStart {
-    public AutoStart(string runKeyPath, string settingsPath, string exePath); // produksi: @"Software\Microsoft\Windows\CurrentVersion\Run", %LOCALAPPDATA%\MediaTray\settings.json
+    public AutoStart(string runKeyPath, string settingsPath, string exePath); // produksi: @"Software\Microsoft\Windows\CurrentVersion\Run", %LOCALAPPDATA%\Tunebar\settings.json
     public bool IsEnabled { get; }
-    public void SetEnabled(bool on);       // tulis/hapus nilai "MediaTray" = "\"<exePath>\"" + simpan {"autoStart":on}
+    public void SetEnabled(bool on);       // tulis/hapus nilai "Tunebar" = "\"<exePath>\"" + simpan {"autoStart":on}
     public void ApplyFirstRunDefault();    // bila settings.json belum ada → SetEnabled(true)
 }
 ```
-- [ ] **Step 1: tes gagal** (runKeyPath `Software\MediaTrayTests\Run`, settings di folder temp; bersihkan di Dispose):
+- [ ] **Step 1: tes gagal** (runKeyPath `Software\TunebarTests\Run`, settings di folder temp; bersihkan di Dispose):
   - `First_run_enables` → nilai registry ada, settings `autoStart:true`
   - `First_run_respects_existing_settings` (settings `false` sudah ada → tetap mati)
   - `SetEnabled_false_removes_value`
@@ -425,8 +425,8 @@ public sealed class AutoStart {
 
 ### Task 11: Verifikasi ujung-ke-ujung (leader + pengguna)
 
-- [ ] `dotnet test MediaTray.sln` dan `node --test "extension/tests/*.test.mjs"` → semua PASS.
-- [ ] `dotnet publish src/MediaTray -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true` → satu `MediaTray.exe`.
+- [ ] `dotnet test Tunebar.sln` dan `node --test "extension/tests/*.test.mjs"` → semua PASS.
+- [ ] `dotnet publish src/Tunebar -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true` → satu `Tunebar.exe`.
 - [ ] Skenario di Opera (3 tab seperti uji awal: video, playlist YT, YT Music):
   1. Popup menampilkan tab yang terakhir mulai memutar; "2 sumber lain memutar" terbuka dan berisi dua tab lain.
   2. Lock tab playlist → putar video di tab lain → popup tetap di playlist; pause/next mengontrol playlist.
@@ -437,5 +437,5 @@ public sealed class AutoStart {
   7. Tutup tab yang di-lock → lock lepas.
   8. Tray dimatikan lalu dijalankan lagi → tab muncul kembali ≤ 20 detik.
   9. Uji Origin: dari console DevTools halaman biasa, `new WebSocket("ws://localhost:47821")` → gagal.
-- [ ] RAM idle `MediaTray.exe` di Task Manager < ~60 MB.
+- [ ] RAM idle `Tunebar.exe` di Task Manager < ~60 MB.
 - [ ] Leader: commit akhir + tag `v0.1.0`.

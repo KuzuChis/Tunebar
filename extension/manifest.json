@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Media Tray Bridge",
+  "name": "Tunebar",
   "version": "1.0.0",
+  "description": "Jembatan Tunebar: mengirim status musik YouTube ke aplikasi Tunebar di taskbar Windows.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsQh3lB0WuYb1FJQ/THqmjLFQoZm9V6e4Ryyx0CI827mcWMg+39MZsx6Nq4iOsWjsEFL04abtYAcfcQu3HO5oJjc04e0yn9qUjDHEmGlgHBLKeuP6KodnMKK3SVlSyrecx5goqgRBa3Hj0qX6YDk6x0ZYXbhRJ4jtEGg9hCGaVfSYUCBS3cE0qjGHQgAgyZdyszFDausMNnwOjG4RLVZ0t8dkEa8TyPI7W1arh/NK6TJxuNDhohgomI2rNCLl4oo755Xjv1LgbCHL/EEKHX8chE6WLJDk4h4zPfVuX56eeLsiegNBCA/C8S25ZGIqRtvyqKC85eCXjnX6TxByQDN9VwIDAQAB",
   "host_permissions": ["https://www.youtube.com/*", "https://music.youtube.com/*"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Media Tray — klik untuk reset volume tab ini ke 100%" },
+  "action": { "default_title": "Tunebar — klik untuk reset volume tab ini ke 100%" },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],

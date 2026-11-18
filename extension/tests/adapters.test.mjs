@@ -1,4 +1,4 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
@@ -27,7 +27,7 @@ function load(file, map) {
   const ctx = { document, getComputedStyle: () => ({ display: "block" }) };
   ctx.globalThis = ctx;
   vm.runInNewContext(fs.readFileSync(new URL(file, dir), "utf8"), ctx);
-  return ctx.MediaTraySite;
+  return ctx.TunebarSite;
 }
 
 const YT_ITEMS = "ytd-watch-flexy ytd-playlist-panel-renderer#playlist ytd-playlist-panel-video-renderer";

@@ -1,4 +1,4 @@
-import { test } from "node:test";
+﻿import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
@@ -6,7 +6,7 @@ import vm from "node:vm";
 const code = readFileSync(new URL("../lib/core.js", import.meta.url), "utf8");
 const sandbox = {};
 vm.runInNewContext(code, sandbox);
-const core = sandbox.MediaTrayCore;
+const core = sandbox.TunebarCore;
 
 test("nextDelay backs off to a cap", () => {
   assert.equal(core.nextDelay(0), 1000);

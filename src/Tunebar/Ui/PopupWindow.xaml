@@ -1,0 +1,237 @@
+﻿<Window x:Class="Tunebar.Ui.PopupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:Tunebar.Ui"
+        Title="Tunebar"
+        Width="340" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+        Background="{DynamicResource BackgroundBrush}"
+        FontFamily="{StaticResource TextFont}" FontSize="12"
+        TextElement.Foreground="{DynamicResource TextPrimaryBrush}"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+
+    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+        <Grid>
+
+            <!-- Nothing is playing -->
+            <StackPanel Margin="24" HorizontalAlignment="Center"
+                        Visibility="{Binding HasCurrent, Converter={StaticResource InvertedBoolToVis}}">
+                <TextBlock Style="{StaticResource IconText}" FontSize="24"
+                           Foreground="{DynamicResource TextTertiaryBrush}"
+                           Text="{x:Static ui:Glyphs.Music}" />
+                <TextBlock Style="{StaticResource SecondaryText}" Margin="0,8,0,0"
+                           HorizontalAlignment="Center" Text="Tidak ada yang diputar" />
+            </StackPanel>
+
+            <!-- Something is playing: layout A, top to bottom, 16px padding and 12px between rows -->
+            <StackPanel Margin="16" Visibility="{Binding HasCurrent, Converter={StaticResource BoolToVis}}">
+
+                <!-- 1. Origin and lock -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource SecondaryText}" VerticalAlignment="Center"
+                               Text="{Binding Current.OriginLabel}" />
+                    <Button Grid.Column="1" x:Name="LockButton" Style="{StaticResource IconButton}"
+                            Width="Auto" Padding="8,0" Margin="8,0,-8,0"
+                            ToolTip="Kunci ke sumber ini" Click="OnLockClick">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource AccentBrush}" Text="Terkunci"
+                                       Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding LockGlyph}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource IconText}">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsLocked}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!-- 2. Cover, title, artist -->
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ui:CoverView Width="64" Height="64" CornerRadius="6" GlyphSize="24" Item="{Binding Current}" />
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis" LineHeight="20"
+                                   LineStackingStrategy="BlockLineHeight" MaxHeight="40"
+                                   Text="{Binding Current.Title}" />
+                        <TextBlock Style="{StaticResource SecondaryText}" Margin="0,2,0,0"
+                                   Text="{Binding Current.Artist}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 3. Seek bar and times -->
+                <StackPanel Margin="0,12,0,0">
+                    <Slider x:Name="SeekSlider" Style="{StaticResource ThinSlider}"
+                            Visibility="{Binding Current.CanSeek, Converter={StaticResource BoolToVis}}"
+                            Thumb.DragStarted="OnSeekDragStarted" Thumb.DragCompleted="OnSeekDragCompleted"
+                            ValueChanged="OnSeekValueChanged" />
+                    <Grid Margin="0,2,0,0">
+                        <TextBlock Style="{StaticResource TertiaryText}" HorizontalAlignment="Left"
+                                   Text="{Binding PositionText}" />
+                        <TextBlock Style="{StaticResource TertiaryText}" HorizontalAlignment="Right"
+                                   Text="{Binding DurationText}" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- 4. Transport -->
+                <StackPanel Margin="0,12,0,0" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Style="{StaticResource IconButton}" ToolTip="Sebelumnya"
+                            IsEnabled="{Binding Current.CanPrev}" Click="OnPrevClick">
+                        <TextBlock Style="{StaticResource IconText}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   Text="{x:Static ui:Glyphs.Previous}" />
+                    </Button>
+                    <Button Style="{StaticResource TransportButton}" Margin="16,0,0,0" ToolTip="Putar / jeda"
+                            Click="OnPlayPauseClick">
+                        <TextBlock Style="{StaticResource IconText}" FontSize="20" Text="{Binding PlayPauseGlyph}" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Margin="16,0,0,0" ToolTip="Berikutnya"
+                            IsEnabled="{Binding Current.CanNext}" Click="OnNextClick">
+                        <TextBlock Style="{StaticResource IconText}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   Text="{x:Static ui:Glyphs.Next}" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Margin="16,0,0,0" ToolTip="Ulangi"
+                            Visibility="{Binding ShowLoop, Converter={StaticResource BoolToVis}}"
+                            Click="OnLoopClick">
+                        <TextBlock Text="{Binding LoopGlyph}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource IconText}">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsLoopActive}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                </StackPanel>
+
+                <!-- 5. Volume -->
+                <Grid Margin="0,12,0,0" Visibility="{Binding ShowVolume, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource IconText}" Margin="0,0,10,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="{x:Static ui:Glyphs.Volume}" />
+                    <Slider Grid.Column="1" x:Name="VolumeSlider" Style="{StaticResource ThinSlider}"
+                            Thumb.DragStarted="OnVolumeDragStarted" Thumb.DragCompleted="OnVolumeDragCompleted"
+                            ValueChanged="OnVolumeValueChanged" />
+                    <TextBlock Grid.Column="2" x:Name="VolumeText" Style="{StaticResource SecondaryText}"
+                               MinWidth="40" Margin="8,0,0,0" TextAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- 6. Playlist -->
+                <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowPlaylist, Converter={StaticResource BoolToVis}}">
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" />
+                    <TextBlock Style="{StaticResource SecondaryText}" Margin="0,12,0,8"
+                               Text="{Binding PlaylistHeader}" />
+                    <ListBox x:Name="PlaylistList" Style="{StaticResource PlaylistListBox}"
+                             ItemsSource="{Binding PlaylistRows}" Button.Click="OnPlaylistRowClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type ui:PlaylistRow}">
+                                <Button Style="{StaticResource RowButton}" Height="32">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="3" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="3" Height="16" CornerRadius="1.5"
+                                                Background="{DynamicResource AccentBrush}"
+                                                Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Grid.Column="1" Margin="9,0,8,0" VerticalAlignment="Center"
+                                                   FontSize="12" TextTrimming="CharacterEllipsis" Text="{Binding Title}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+
+                <!-- 7. Other sources -->
+                <StackPanel Margin="0,12,0,0" Visibility="{Binding HasOthers, Converter={StaticResource BoolToVis}}">
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" />
+                    <Button Style="{StaticResource RowButton}" Height="32" Margin="0,8,0,0" Click="OnOthersToggleClick">
+                        <Grid Margin="8,0">
+                            <TextBlock Style="{StaticResource SecondaryText}" VerticalAlignment="Center"
+                                       Text="{Binding OthersText}" />
+                            <TextBlock Style="{StaticResource IconText}" FontSize="12" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="{Binding OthersChevronGlyph}" />
+                        </Grid>
+                    </Button>
+                    <ItemsControl Margin="0,4,0,0" ItemsSource="{Binding OtherRows}" Button.Click="OnOtherRowClick"
+                                  Visibility="{Binding IsOthersExpanded, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type ui:OtherSourceRow}">
+                                <Grid Height="40">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Tag="select" Style="{StaticResource RowButton}">
+                                        <Grid Margin="8,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:CoverView Width="28" Height="28" CornerRadius="4" GlyphSize="12"
+                                                          Item="{Binding Source}" />
+                                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock FontSize="12" TextTrimming="CharacterEllipsis"
+                                                           Text="{Binding Source.Title}" />
+                                                <TextBlock Style="{StaticResource TertiaryText}"
+                                                           Text="{Binding Source.OriginLabel}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="1" Tag="play" Style="{StaticResource IconButton}"
+                                            Width="28" Height="28" Margin="4,0,0,0" ToolTip="Putar / jeda">
+                                        <TextBlock Style="{StaticResource IconText}" FontSize="14"
+                                                   Text="{Binding PlayGlyph}" />
+                                    </Button>
+                                    <Button Grid.Column="2" Tag="lock" Style="{StaticResource IconButton}"
+                                            Width="28" Height="28" Margin="4,0,0,0" ToolTip="Kunci ke sumber ini">
+                                        <TextBlock Style="{StaticResource IconText}" FontSize="14"
+                                                   Text="{x:Static ui:Glyphs.Unlock}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
