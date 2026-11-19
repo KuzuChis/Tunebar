@@ -29,6 +29,9 @@ public partial class App : Application
     private AutoStart? _autoStart;
     private WidgetSettings? _widgetSettings;
     private TaskbarWidgetHost? _widgetHost;
+    private GlobalHotkeys? _hotkeys;
+
+    private const double VolumeStep = 0.1;
 
     [DllImport("kernel32.dll")]
     private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
@@ -103,6 +106,11 @@ public partial class App : Application
         if (portInUse)
             _tray.ShowNotification("Tunebar", $"Port {ExtensionIdentity.Port} dipakai program lain");
 
+        // Global hotkeys control whatever source is shown (the locked one when locked).
+        _hotkeys = new GlobalHotkeys(action => HandleHotkey(viewModel, action));
+        if (_hotkeys.Failed.Count > 0)
+            _tray.ShowNotification("Tunebar", "Hotkey dipakai program lain: " + string.Join(", ", _hotkeys.Failed));
+
         // Developer aid: "Tunebar.exe --show" opens the popup right away (for screenshots).
         if (e.Args.Contains("--show"))
             _popup.Toggle();
@@ -118,6 +126,18 @@ public partial class App : Application
         _smtc = smtc;
         smtcCommands.Target = smtc;
         smtc.SourcesChanged += sources => Dispatcher.InvokeAsync(() => registry.SetSmtcSources(sources));
+    }
+
+    private static void HandleHotkey(PopupViewModel viewModel, HotkeyAction action)
+    {
+        switch (action)
+        {
+            case HotkeyAction.PlayPause: UiTasks.Fire(viewModel.TogglePlayAsync); break;
+            case HotkeyAction.Next: UiTasks.Fire(viewModel.NextAsync); break;
+            case HotkeyAction.Prev: UiTasks.Fire(viewModel.PrevAsync); break;
+            case HotkeyAction.VolumeUp: UiTasks.Fire(() => viewModel.StepVolumeAsync(VolumeStep)); break;
+            case HotkeyAction.VolumeDown: UiTasks.Fire(() => viewModel.StepVolumeAsync(-VolumeStep)); break;
+        }
     }
 
     /// <summary>Asks Windows to give back unused memory (the popup just hid, so the app is idle).</summary>
@@ -183,6 +203,13 @@ public partial class App : Application
         var iconColor = Theme.TaskbarIsLight() ? Brushes.Black : Brushes.White;
 
         var menu = new ContextMenu();
+
+        menu.Items.Add(new MenuItem
+        {
+            Header = "Hotkey: Ctrl+Alt+Shift + Spasi / ← / → / ↑ / ↓",
+            IsEnabled = false,
+        });
+        menu.Items.Add(new Separator());
 
         var widgetItem = new MenuItem
         {
@@ -255,6 +282,8 @@ public partial class App : Application
 
     private void Cleanup()
     {
+        _hotkeys?.Dispose();
+        _hotkeys = null;
         _widgetHost?.Dispose();
         _widgetHost = null;
         _tray?.Dispose();

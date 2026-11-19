@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Diagnostics;
 using Tunebar.Core;
 
 namespace Tunebar.Ui;
@@ -68,6 +69,12 @@ public sealed class PopupViewModel : INotifyPropertyChanged
     private IReadOnlyList<PlaylistRow> _playlistRows = [];
     private IReadOnlyList<OtherSourceRow> _otherRows = [];
     private bool _isOthersExpanded;
+    private string? _flashText;
+    private int _flashId;
+
+    private static readonly TimeSpan FlashDuration = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan StepMemory = TimeSpan.FromSeconds(2);
+    private (string SourceId, double Reported, double Sent, long Tick)? _lastStep;
 
     /// <param name="dispatch">Runs an action on the UI thread. Tests pass <c>a => a()</c>.</param>
     public PopupViewModel(SourceRegistry registry, ISourceCommands commands, Action<Action> dispatch)
@@ -149,6 +156,53 @@ public sealed class PopupViewModel : INotifyPropertyChanged
         if (_current is null) return;
         if (IsLocked) _registry.Unlock();
         else _registry.Lock(_current.Id);
+    }
+
+    /// <summary>
+    /// Changes the current source's volume by <paramref name="delta"/> (0.1 = 10 points), rounded to 0.01
+    /// and kept between 0 and the source's maximum. Does nothing without a volume. Shows a short "Volume 70%" note.
+    /// </summary>
+    public Task StepVolumeAsync(double delta)
+    {
+        if (_current is not { Volume: { } volume } s) return Task.CompletedTask;
+
+        // The source reports its new volume only after a moment, so quick repeated steps
+        // (a held key) continue from the value we sent last instead of the stale report.
+        // A report that changed since our last step wins.
+        var reported = volume;
+        if (_lastStep is { } last && last.SourceId == s.Id && last.Reported == reported
+            && Stopwatch.GetElapsedTime(last.Tick) < StepMemory)
+            volume = last.Sent;
+
+        var next = Math.Clamp(Math.Round((volume + delta) * 100) / 100, 0, s.MaxVolume);
+        _lastStep = (s.Id, reported, next, Stopwatch.GetTimestamp());
+        Flash($"Volume {Format.Percent(next)}");
+        return _commands.SetVolumeAsync(s, next);
+    }
+
+    /// <summary>Short feedback text shown in place of the artist line; null when there is none.</summary>
+    public string? FlashText
+    {
+        get => _flashText;
+        private set
+        {
+            _flashText = value;
+            Raise(nameof(FlashText));
+            Raise(nameof(IsFlashing));
+        }
+    }
+
+    public bool IsFlashing => _flashText is not null;
+
+    private void Flash(string text)
+    {
+        var mine = ++_flashId;
+        FlashText = text;
+        // A newer flash bumps the counter, so an older timer will not clear it early.
+        _ = Task.Delay(FlashDuration).ContinueWith(_ => _dispatch(() =>
+        {
+            if (_flashId == mine) FlashText = null;
+        }), TaskScheduler.Default);
     }
 
     public Task SetVolumeAsync(double v) => _current is { } s ? _commands.SetVolumeAsync(s, v) : Task.CompletedTask;

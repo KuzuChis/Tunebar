@@ -42,6 +42,7 @@ Tunebar menaruh kontrolnya di tempat yang selalu kosong: **ujung kiri taskbar**.
 | 📃 **Daftar playlist** | Lihat isi playlist yang sedang diputar dan lompat ke lagu mana pun. Rekomendasi autoplay setelah playlist habis tidak ikut ditampilkan. |
 | 🔁 **Satu tombol loop** | Satu tombol untuk berputar antara mati → ulang playlist → ulang satu lagu. |
 | ⏩ **Seek** | Geser posisi lagu langsung dari popup. |
+| ⌨️ **Hotkey global** | Kontrol sumber yang sedang tampil tanpa mouse: `Ctrl+Alt+Shift` + `Spasi` (play/pause), `→` (berikutnya), `←` (sebelumnya), `↑` / `↓` (volume ±10%). |
 | 🌗 **Ikut tema Windows** | Warna terang/gelap mengikuti pengaturan Windows dan warna taskbar. |
 | 🚀 **Ringan & jalan otomatis** | Berjalan saat Windows mulai (bisa dimatikan), satu instance, dan hemat memori. |
 
@@ -117,6 +118,9 @@ Tanpa ekstensi, Tunebar tetap bisa mengontrol browser lewat Windows Media Sessio
 | Aksi | Cara |
 |---|---|
 | Play / pause, next, prev | Klik ⏯ ⏭ ⏮ di widget taskbar |
+| Play / pause dari keyboard | `Ctrl+Alt+Shift+Spasi` |
+| Berikutnya / sebelumnya dari keyboard | `Ctrl+Alt+Shift+→` / `Ctrl+Alt+Shift+←` |
+| Volume naik / turun 10% dari keyboard | `Ctrl+Alt+Shift+↑` / `Ctrl+Alt+Shift+↓` |
 | Buka panel lengkap | Klik cover atau judul di widget (atau klik ikon tray) |
 | Kunci sumber | Klik ikon gembok di popup |
 | Pindah ke sumber lain | Buka bagian "sumber lain" di popup |

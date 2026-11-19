@@ -15,7 +15,7 @@ public class PopupViewModelTests
         public Task NextAsync(MediaSource s) => Record($"next {s.Id}");
         public Task PrevAsync(MediaSource s) => Record($"prev {s.Id}");
         public Task SeekAsync(MediaSource s, double seconds) => Record($"seek {s.Id} {seconds}");
-        public Task SetVolumeAsync(MediaSource s, double volume) => Record($"volume {s.Id} {volume}");
+        public Task SetVolumeAsync(MediaSource s, double volume) => Record(FormattableString.Invariant($"volume {s.Id} {volume}"));
         public Task SetLoopAsync(MediaSource s, LoopMode mode) => Record($"loop {s.Id} {mode}");
         public Task JumpAsync(MediaSource s, int index) => Record($"jump {s.Id} {index}");
 
@@ -30,11 +30,12 @@ public class PopupViewModelTests
         int n,
         bool playing = true,
         double? volume = null,
+        double maxVolume = 1,
         IReadOnlyList<LoopMode>? loopModes = null,
         LoopMode loop = LoopMode.Off,
         Playlist? playlist = null) =>
         new($"tab:{n}", SourceKind.ExtensionTab, "Opera", "Opera · tab YouTube", $"Title {n}", null, null, null,
-            playing, null, null, false, false, volume, 1, loop, loopModes ?? [], playlist);
+            playing, null, null, false, false, volume, maxVolume, loop, loopModes ?? [], playlist);
 
     private static (PopupViewModel Vm, SourceRegistry Registry, FakeCommands Commands) Create()
     {
@@ -152,5 +153,82 @@ public class PopupViewModelTests
         await vm.TogglePlayOtherAsync("tab:1");
 
         Assert.Equal(["toggle tab:1"], commands.Calls);
+    }
+
+    [Fact]
+    public async Task StepVolume_up_and_down_by_ten_points()
+    {
+        var (vm, registry, commands) = Create();
+        registry.SetExtensionSources([Tab(1, volume: 0.5)]);
+
+        await vm.StepVolumeAsync(0.1);
+        await vm.StepVolumeAsync(-0.1);
+
+        // The second step continues from the 0.6 we sent (the tab has not reported it yet).
+        Assert.Equal(["volume tab:1 0.6", "volume tab:1 0.5"], commands.Calls);
+    }
+
+    [Fact]
+    public async Task StepVolume_held_key_keeps_climbing_before_the_tab_reports()
+    {
+        var (vm, registry, commands) = Create();
+        registry.SetExtensionSources([Tab(1, volume: 0.5)]);
+
+        await vm.StepVolumeAsync(0.1);
+        await vm.StepVolumeAsync(0.1);
+        await vm.StepVolumeAsync(0.1);
+
+        Assert.Equal(["volume tab:1 0.6", "volume tab:1 0.7", "volume tab:1 0.8"], commands.Calls);
+    }
+
+    [Fact]
+    public async Task StepVolume_clamps_to_zero_and_max()
+    {
+        var (vm, registry, commands) = Create();
+        registry.SetExtensionSources([Tab(1, volume: 0.05, maxVolume: 1.5)]);
+        await vm.StepVolumeAsync(-0.1);
+
+        registry.SetExtensionSources([Tab(1, volume: 1.45, maxVolume: 1.5)]);
+        await vm.StepVolumeAsync(0.1);
+
+        Assert.Equal(["volume tab:1 0", "volume tab:1 1.5"], commands.Calls);
+    }
+
+    [Fact]
+    public async Task StepVolume_rounds_to_hundredths()
+    {
+        var (vm, registry, commands) = Create();
+        registry.SetExtensionSources([Tab(1, volume: 0.3333)]);
+
+        await vm.StepVolumeAsync(0.1);
+
+        Assert.Equal(["volume tab:1 0.43"], commands.Calls);
+    }
+
+    [Fact]
+    public async Task StepVolume_ignored_without_volume_or_source()
+    {
+        var (vm, registry, commands) = Create();
+        await vm.StepVolumeAsync(0.1);
+
+        registry.SetExtensionSources([Tab(1, volume: null)]);
+        await vm.StepVolumeAsync(0.1);
+
+        Assert.Empty(commands.Calls);
+        Assert.Null(vm.FlashText);
+    }
+
+    [Fact]
+    public async Task StepVolume_sets_FlashText()
+    {
+        var (vm, registry, _) = Create();
+        registry.SetExtensionSources([Tab(1, volume: 0.6)]);
+        var changed = new List<string?>();
+        ((INotifyPropertyChanged)vm).PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        await vm.StepVolumeAsync(0.1);
+
+        Assert.Equal("Volume 70%", vm.FlashText);
+        Assert.Contains(nameof(PopupViewModel.FlashText), changed);
     }
 }

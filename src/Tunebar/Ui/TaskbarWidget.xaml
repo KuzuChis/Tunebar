@@ -87,10 +87,17 @@
                         </DockPanel>
                         <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                   Text="{Binding FlashText}"
+                                   Visibility="{Binding IsFlashing, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                    Text="{Binding Current.Artist}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFlashing}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding Current.Artist}" Value="">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
