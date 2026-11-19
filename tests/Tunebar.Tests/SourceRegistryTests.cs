@@ -95,8 +95,11 @@ public class SourceRegistryTests
         reg.Lock("tab:1");
 
         reg.ClearExtensionSources();
-        Assert.Equal("smtc:sp", reg.Current?.Id); // absent: normal rule applies
-        clock.Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal("tab:1", reg.Current?.Id); // a short gap: the tab is kept for a few seconds
+        clock.Advance(TimeSpan.FromSeconds(4));
+        reg.SetSmtcSources([Smtc("sp", true)]);
+        Assert.Equal("smtc:sp", reg.Current?.Id); // gone longer: normal rule applies
+        clock.Advance(TimeSpan.FromSeconds(1));
         reg.SetExtensionSources([Tab(1, true)]);
 
         Assert.Equal("tab:1", reg.LockedId);
@@ -225,5 +228,33 @@ public class SourceRegistryTests
         reg.Lock("tab:99");   // not visible: no-op
 
         Assert.Equal(0, count);
+    }
+    [Fact]
+    public void Tab_missing_briefly_is_kept_then_dropped()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, true)]);
+
+        reg.SetExtensionSources([]); // e.g. a track change or the extension's worker restarting
+        Assert.Equal("tab:1", reg.Current?.Id);
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        reg.SetExtensionSources([]);
+        Assert.Null(reg.Current);
+    }
+
+    [Fact]
+    public void Tab_gets_cover_bytes_from_its_Opera_twin()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        byte[] cover = [1, 2, 3];
+        reg.SetExtensionSources([Tab(1, true, "Song")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera") with { CoverBytes = cover }]);
+
+        Assert.Equal("tab:1", reg.Current?.Id);
+        Assert.Same(cover, reg.Current?.CoverBytes);
+        Assert.Empty(reg.Others);
     }
 }

@@ -16,6 +16,8 @@ public sealed class SourceRegistry
 
     private IReadOnlyList<MediaSource> _extensionSources = [];
     private IReadOnlyList<MediaSource> _smtcSources = [];
+    private readonly SourceGrace _tabGrace = new();
+    private IReadOnlyList<MediaSource> _extensionInput = []; // the latest list exactly as the extension sent it
 
     // Bookkeeping per source id.
     private readonly Dictionary<string, DateTimeOffset> _startedAt = new();
@@ -44,10 +46,15 @@ public sealed class SourceRegistry
     /// <summary>Visible sources other than Current: playing ones first, then the most recent.</summary>
     public IReadOnlyList<MediaSource> Others => Ordered().Skip(1).ToList();
 
-    /// <summary>Replaces all browser-tab sources.</summary>
+    /// <summary>
+    /// Replaces all browser-tab sources. A tab that is missing from the new list stays for a few
+    /// seconds (see <see cref="SourceGrace"/>), so a brief gap during a track change or a restart of
+    /// the extension's worker does not make the popup and widget flash "nothing playing".
+    /// </summary>
     public void SetExtensionSources(IReadOnlyList<MediaSource> sources)
     {
-        _extensionSources = sources;
+        _extensionInput = sources;
+        ApplyTabGrace();
         Refresh();
     }
 
@@ -55,7 +62,15 @@ public sealed class SourceRegistry
     public void SetSmtcSources(IReadOnlyList<MediaSource> sources)
     {
         _smtcSources = sources;
+        ApplyTabGrace(); // also expires kept tabs when the extension went quiet (disconnected)
         Refresh();
+    }
+
+    private void ApplyTabGrace()
+    {
+        var built = new Dictionary<string, MediaSource?>();
+        foreach (var source in _extensionInput) built[source.Id] = source;
+        _extensionSources = _tabGrace.Update(built, _now());
     }
 
     /// <summary>Removes all browser-tab sources (for example when the extension disconnects).</summary>
@@ -87,9 +102,22 @@ public sealed class SourceRegistry
         Notify();
     }
 
-    /// <summary>Extension sources plus SMTC sources, minus the Opera SMTC duplicate of a tab.</summary>
+    /// <summary>
+    /// Extension sources plus SMTC sources, minus the Opera SMTC duplicate of a tab.
+    /// The duplicate's cover bytes (Opera already downloaded the picture for Windows) are given to
+    /// the matching tab, so its cover shows at once instead of waiting for a download of the URL.
+    /// </summary>
     private List<MediaSource> Visible()
     {
+        var operaByTitle = new Dictionary<string, MediaSource>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in _smtcSources.Where(s => s.AppName == "Opera"))
+            operaByTitle.TryAdd(NormalizeTitle(s.Title), s);
+
+        var tabs = _extensionSources.Select(tab =>
+            operaByTitle.TryGetValue(NormalizeTitle(tab.Title), out var twin) && twin.CoverBytes is { Length: > 0 }
+                ? tab with { CoverBytes = twin.CoverBytes }
+                : tab).ToList();
+
         var tabTitles = _extensionSources
             .Select(s => NormalizeTitle(s.Title))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -97,7 +125,7 @@ public sealed class SourceRegistry
         var smtc = _smtcSources.Where(s =>
             !(s.AppName == "Opera" && tabTitles.Contains(NormalizeTitle(s.Title))));
 
-        return _extensionSources.Concat(smtc).ToList();
+        return tabs.Concat(smtc).ToList();
     }
 
     /// <summary>Trims the title and removes a trailing " - YouTube" / " - YouTube Music" (Opera adds it).</summary>
@@ -196,7 +224,9 @@ public sealed class SourceRegistry
             return;
         }
 
-        var present = Visible().Any(s => s.Id == LockedId);
+        // Measured on what the extension/Windows actually sent, not on the short tab grace,
+        // so the lock's own 10 s grace starts when the source really went missing.
+        var present = _extensionInput.Any(s => s.Id == LockedId) || _smtcSources.Any(s => s.Id == LockedId);
         if (present) _lockMissingSince = null;
         else _lockMissingSince ??= now;
     }

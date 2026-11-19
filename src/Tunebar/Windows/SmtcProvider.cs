@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿﻿using System.Collections.Concurrent;
+using System.IO;
 using Tunebar.Core;
 using SmtcManager = global::Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager;
 using SmtcSession = global::Windows.Media.Control.GlobalSystemMediaTransportControlsSession;
@@ -6,6 +7,15 @@ using SmtcMediaProperties = global::Windows.Media.Control.GlobalSystemMediaTrans
 using SmtcTimeline = global::Windows.Media.Control.GlobalSystemMediaTransportControlsSessionTimelineProperties;
 using SmtcPlaybackStatus = global::Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 using SmtcRepeatMode = global::Windows.Media.MediaPlaybackAutoRepeatMode;
+using MediaHandler = global::Windows.Foundation.TypedEventHandler<
+    global::Windows.Media.Control.GlobalSystemMediaTransportControlsSession,
+    global::Windows.Media.Control.MediaPropertiesChangedEventArgs>;
+using PlaybackHandler = global::Windows.Foundation.TypedEventHandler<
+    global::Windows.Media.Control.GlobalSystemMediaTransportControlsSession,
+    global::Windows.Media.Control.PlaybackInfoChangedEventArgs>;
+using TimelineHandler = global::Windows.Foundation.TypedEventHandler<
+    global::Windows.Media.Control.GlobalSystemMediaTransportControlsSession,
+    global::Windows.Media.Control.TimelinePropertiesChangedEventArgs>;
 
 namespace Tunebar.Windows;
 
@@ -18,21 +28,38 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
 {
     private const string IdPrefix = "smtc:";
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(1000);
+    private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(150);
     private static readonly LoopMode[] AllLoopModes = [LoopMode.Off, LoopMode.Playlist, LoopMode.One];
 
     private readonly SmtcManager _manager;
     private readonly AppVolumeController _volume;
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
-    // Cover bytes per (aumid, title), so the thumbnail stream is not read every second.
-    private readonly Dictionary<(string Aumid, string Title), byte[]?> _coverCache = new();
+    private readonly Func<DateTimeOffset> _clock;
+    // Cover state per aumid, so the thumbnail stream is not read every second.
+    private readonly ConcurrentDictionary<string, CoverState> _covers = new();
+    // The cover of the previous title per app, to spot Windows still serving it after a track change.
+    private readonly ConcurrentDictionary<string, byte[]?> _previousCover = new();
+    private static readonly TimeSpan SameCoverAcceptAfter = TimeSpan.FromSeconds(3);
+    // Keeps the last good source of each app for a few seconds across track changes.
+    private readonly SourceGrace _grace = new();
+    // Sessions we listen to, by aumid. Only touched while holding _refreshLock (and in Dispose).
+    private readonly Dictionary<string, Subscription> _subscriptions = new();
+    private readonly object _debounceGate = new();
+    private Timer? _debounce;
     private bool _disposed;
 
-    private SmtcProvider(SmtcManager manager, AppVolumeController volume)
+    private SmtcProvider(SmtcManager manager, AppVolumeController volume, Func<DateTimeOffset>? clock = null)
     {
         _manager = manager;
         _volume = volume;
+        _clock = clock ?? (() => DateTimeOffset.Now);
+        _debounce = new Timer(_ => RunDebouncedRefresh(), null, Timeout.Infinite, Timeout.Infinite);
     }
+
+    /// <summary>One session and the handlers attached to it, so they can be removed again.</summary>
+    private sealed record Subscription(
+        SmtcSession Session, MediaHandler Media, PlaybackHandler Playback, TimelineHandler Timeline);
 
     /// <summary>Raised with the full list of Windows sources about once per second and when sessions change.</summary>
     public event Action<IReadOnlyList<MediaSource>>? SourcesChanged;
@@ -49,7 +76,36 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
 
     // ---- Refreshing ----
 
-    private void OnSessionsChanged(SmtcManager sender, object args) => _ = RefreshAsync();
+    private void OnSessionsChanged(SmtcManager sender, object args) => ScheduleRefresh();
+
+    /// <summary>Asks for a refresh in ~150 ms; calls arriving in the meantime are merged into one.</summary>
+    private void ScheduleRefresh()
+    {
+        try
+        {
+            lock (_debounceGate)
+            {
+                if (_disposed) return;
+                _debounce?.Change(DebounceDelay, Timeout.InfiniteTimeSpan);
+            }
+        }
+        catch (Exception)
+        {
+            // Never throw out of an event handler.
+        }
+    }
+
+    private void RunDebouncedRefresh()
+    {
+        try
+        {
+            _ = RefreshAsync();
+        }
+        catch (Exception)
+        {
+            // Never throw out of a timer callback.
+        }
+    }
 
     private async Task RefreshLoopAsync()
     {
@@ -81,18 +137,33 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
 
         try
         {
-            var sources = new List<MediaSource>();
+            var built = new Dictionary<string, MediaSource?>();
+            var live = new HashSet<string>();
             foreach (var session in _manager.GetSessions())
             {
+                string aumid;
                 try
                 {
-                    sources.Add(await BuildSourceAsync(session));
+                    aumid = session.SourceAppUserModelId;
                 }
                 catch (Exception)
                 {
-                    // One broken session is skipped; it must not stop the others.
+                    continue;
+                }
+                live.Add(aumid);
+                Subscribe(aumid, session);
+                try
+                {
+                    built[IdPrefix + aumid] = await BuildSourceAsync(session);
+                }
+                catch (Exception)
+                {
+                    // One broken session must not stop the others; the grace copy covers it.
+                    built[IdPrefix + aumid] = null;
                 }
             }
+            Unsubscribe(live);
+            var sources = _grace.Update(built, _clock());
             if (!_stop.IsCancellationRequested) SourcesChanged?.Invoke(sources);
         }
         catch (Exception)
@@ -105,13 +176,71 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
         }
     }
 
+    // ---- Session events ----
+
+    /// <summary>Starts listening to this session once; later calls for the same session do nothing.</summary>
+    private void Subscribe(string aumid, SmtcSession session)
+    {
+        try
+        {
+            if (_subscriptions.TryGetValue(aumid, out var existing))
+            {
+                if (ReferenceEquals(existing.Session, session)) return;
+                Detach(existing); // the app made a new session object
+            }
+            var sub = new Subscription(
+                session,
+                (_, _) =>
+                {
+                    if (_covers.TryGetValue(aumid, out var cover)) cover.Dirty = true;
+                    ScheduleRefresh();
+                },
+                (_, _) => ScheduleRefresh(),
+                (_, _) => ScheduleRefresh());
+            session.MediaPropertiesChanged += sub.Media;
+            session.PlaybackInfoChanged += sub.Playback;
+            session.TimelinePropertiesChanged += sub.Timeline;
+            _subscriptions[aumid] = sub;
+        }
+        catch (Exception)
+        {
+            // Without events we still have the 1 s poll.
+        }
+    }
+
+    /// <summary>Stops listening to sessions that are no longer in <paramref name="live"/>.</summary>
+    private void Unsubscribe(HashSet<string> live)
+    {
+        foreach (var aumid in _subscriptions.Keys.Where(k => !live.Contains(k)).ToList())
+        {
+            Detach(_subscriptions[aumid]);
+            _subscriptions.Remove(aumid);
+        }
+    }
+
+    private static void Detach(Subscription sub)
+    {
+        try
+        {
+            sub.Session.MediaPropertiesChanged -= sub.Media;
+            sub.Session.PlaybackInfoChanged -= sub.Playback;
+            sub.Session.TimelinePropertiesChanged -= sub.Timeline;
+        }
+        catch (Exception)
+        {
+            // The session may already be gone.
+        }
+    }
+
     // ---- Mapping one session to a MediaSource ----
 
-    private async Task<MediaSource> BuildSourceAsync(SmtcSession session)
+    /// <summary>Maps one session to a source; null when it has no title yet (mid track change).</summary>
+    private async Task<MediaSource?> BuildSourceAsync(SmtcSession session)
     {
         var aumid = session.SourceAppUserModelId;
         var appName = AumidMapper.AppName(aumid);
         var properties = await session.TryGetMediaPropertiesAsync();
+        if (properties is null || string.IsNullOrWhiteSpace(properties.Title)) return null;
         var playback = session.GetPlaybackInfo();
         var timeline = session.GetTimelineProperties();
         var loopModes = LoopModesOf(playback.AutoRepeatMode);
@@ -129,7 +258,7 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
             CoverBytes: await GetCoverAsync(aumid, properties),
             IsPlaying: isPlaying,
             PositionSec: SmtcMath.CurrentPosition(
-                timeline.Position, timeline.LastUpdatedTime, DateTimeOffset.Now, isPlaying, duration),
+                timeline.Position, timeline.LastUpdatedTime, _clock(), isPlaying, duration),
             DurationSec: duration,
             CanNext: playback.Controls.IsNextEnabled,
             CanPrev: playback.Controls.IsPreviousEnabled,
@@ -175,18 +304,43 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
 
     // ---- Cover art ----
 
-    /// <summary>Returns the cached cover for this (app, title), reading the thumbnail only the first time.</summary>
+    /// <summary>
+    /// Returns the cover for this app's current title. The thumbnail is read again only when
+    /// <see cref="CoverRefreshPolicy"/> says so; a new title never shows the previous track's cover.
+    /// </summary>
     private async Task<byte[]?> GetCoverAsync(string aumid, SmtcMediaProperties properties)
     {
-        var key = (aumid, properties.Title);
-        if (_coverCache.TryGetValue(key, out var cached)) return cached;
+        var now = _clock();
+        var title = properties.Title;
+        _covers.TryGetValue(aumid, out var state);
+        if (!CoverRefreshPolicy.ShouldRead(state, title, now)) return state!.Bytes;
 
+        var titleChanged = state is null || state.Title != title;
+        state ??= new CoverState();
+        state.Dirty = false; // cleared before reading so a change during the read is not lost
         var bytes = await ReadThumbnailAsync(properties);
-        // Keep only the newest cover per app so the cache cannot grow without limit.
-        foreach (var old in _coverCache.Keys.Where(k => k.Aumid == aumid).ToList())
-            _coverCache.Remove(old);
-        _coverCache[key] = bytes;
-        return bytes;
+        if (titleChanged) _previousCover[aumid] = state.Bytes;
+        // Windows often still hands out the previous track's picture for a moment after the title
+        // changed. Treat that as "not ready yet" (the retry policy reads again) instead of showing
+        // a wrong cover. Still the same after 3 s means the tracks really share it (same album).
+        var sinceTitle = titleChanged ? TimeSpan.Zero : now - state.TitleSince;
+        if (bytes is not null && sinceTitle < SameCoverAcceptAfter
+            && _previousCover.TryGetValue(aumid, out var previous) && previous is not null
+            && bytes.AsSpan().SequenceEqual(previous))
+            bytes = null;
+        if (titleChanged)
+        {
+            state.Title = title;
+            state.TitleSince = now;
+            state.Bytes = bytes;
+        }
+        else if (bytes is not null)
+        {
+            state.Bytes = bytes;
+        }
+        state.ReadAt = now;
+        _covers[aumid] = state;
+        return state.Bytes;
     }
 
     private static async Task<byte[]?> ReadThumbnailAsync(SmtcMediaProperties properties)
@@ -271,9 +425,16 @@ public sealed class SmtcProvider : ISourceCommands, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
+        lock (_debounceGate)
+        {
+            _disposed = true;
+            _debounce?.Dispose();
+            _debounce = null;
+        }
         _stop.Cancel();
         _manager.SessionsChanged -= OnSessionsChanged;
+        foreach (var sub in _subscriptions.Values.ToList()) Detach(sub);
+        _subscriptions.Clear();
         _volume.Dispose();
     }
 }
