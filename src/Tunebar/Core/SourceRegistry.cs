@@ -198,10 +198,29 @@ public sealed class SourceRegistry
             _pausedAt.Remove(id);
         }
 
+        MoveLockToTab();
         UpdateLock(now);
         if (_selectedId is not null && !present.Contains(_selectedId)) _selectedId = null;
 
         Notify();
+    }
+
+    /// <summary>
+    /// A lock on the Opera SMTC entry would point at an invisible source once that entry becomes the
+    /// hidden twin of a tab (same title), so the lock moves to that tab.
+    /// </summary>
+    private void MoveLockToTab()
+    {
+        var locked = _smtcSources.FirstOrDefault(s => s.Id == LockedId && s.AppName == "Opera");
+        if (locked is null) return;
+
+        var title = NormalizeTitle(locked.Title);
+        var twinTab = _extensionSources.FirstOrDefault(
+            tab => string.Equals(NormalizeTitle(tab.Title), title, StringComparison.OrdinalIgnoreCase));
+        if (twinTab is null) return;
+
+        LockedId = twinTab.Id;
+        _lockMissingSince = null;
     }
 
     /// <summary>

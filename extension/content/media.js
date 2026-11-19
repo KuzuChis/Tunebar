@@ -134,25 +134,40 @@
     };
   }
 
+  // Sites with native loop modes (YT Music) own looping; others use video.loop + playlist repeat.
   function loopState(video) {
+    const native = adapter("getLoopMode", null);
+    if (native) return native;
     if (video.loop) return "one";
     return adapter("getLoopPlaylist", null) === true ? "playlist" : "off";
   }
 
   function loopModes() {
+    if (adapter("getLoopMode", null)) return ["off", "playlist", "one"];
     const modes = ["off"];
     if (adapter("getLoopPlaylist", null) !== null) modes.push("playlist");
     modes.push("one");
     return modes;
   }
 
+  // Current-track time from the site when the video clock spans several tracks (YT Music).
+  function siteTime() {
+    const t = adapter("getTime", null);
+    const position = t && finiteOrNull(t.position);
+    const duration = t && finiteOrNull(t.duration);
+    return position !== null && position !== undefined && duration !== null && duration !== undefined
+      ? { position, duration }
+      : null;
+  }
+
   function buildState(video) {
+    const t = siteTime();
     return {
       site: site.site || null,
       ...readMetadata(),
       isPlaying: !video.paused && !video.ended,
-      position: finiteOrNull(video.currentTime),
-      duration: finiteOrNull(video.duration),
+      position: t ? t.position : finiteOrNull(video.currentTime),
+      duration: t ? t.duration : finiteOrNull(video.duration),
       volume: reportedVolume(video),
       loop: loopState(video),
       loopModes: loopModes(),
@@ -172,6 +187,10 @@
 
   // ---- commands ----
   function setLoop(video, mode) {
+    if (adapter("getLoopMode", null)) {
+      video.loop = false; // the site's own repeat handles it; video.loop would fight it
+      return Promise.resolve(adapter("setLoopMode", false, mode)).catch(() => {});
+    }
     if (mode === "one") {
       video.loop = true;
       adapter("setLoopPlaylist", false, false);
@@ -192,12 +211,16 @@
         if (video.paused) await video.play().catch(() => {}); else video.pause();
         break;
       case "seek":
-        if (Number.isFinite(value)) video.currentTime = value;
+        if (Number.isFinite(value)) {
+          const t = siteTime();
+          // Seek inside the current track: shift by the track's offset in the shared clock.
+          video.currentTime = t ? video.currentTime - t.position + value : value;
+        }
         break;
       case "next": adapter("next", false); break;
       case "prev": adapter("prev", false); break;
       case "jump": adapter("jump", false, value); break;
-      case "loop": setLoop(video, value); break;
+      case "loop": await setLoop(video, value); break;
       case "volume":
         storeVolume(clampVolume(value));
         await applyVolume();
@@ -207,7 +230,9 @@
   }
 
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === "command") runCommand(msg.action, msg.value);
+    if (!msg) return;
+    if (msg.type === "command") runCommand(msg.action, msg.value);
+    else if (msg.type === "poll") report(); // answers the service worker even when timers are throttled
   });
 
   // ---- scheduling: 1 s while playing, 5 s while paused, immediately on media events ----

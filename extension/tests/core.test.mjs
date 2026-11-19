@@ -59,3 +59,10 @@ test("buildSnapshot sorts by tabId", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(snap.tabs.map((t) => t.tabId))), [2, 5]);
   assert.equal(snap.tabs[0].title, "two");
 });
+
+test("tabsToPoll picks tabs whose last report is older than the threshold", () => {
+  const entries = { 1: { at: 9000 }, 2: { at: 5000 }, 7: { at: 6000 } };
+  assert.deepEqual([...core.tabsToPoll(entries, 10000, 3000)], [2, 7]);
+  assert.equal(core.tabsToPoll({}, 10000, 3000).length, 0);
+  assert.equal(Object.keys(entries).length, 3); // does not mutate
+});

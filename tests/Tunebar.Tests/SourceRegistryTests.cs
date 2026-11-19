@@ -257,4 +257,24 @@ public class SourceRegistryTests
         Assert.Same(cover, reg.Current?.CoverBytes);
         Assert.Empty(reg.Others);
     }
+
+    [Fact]
+    public void Lock_on_Opera_smtc_moves_to_tab_when_it_becomes_the_tabs_twin()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, true, "Other")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera")]);
+        reg.Lock("smtc:opera");
+        Assert.Equal("smtc:opera", reg.Current?.Id);
+
+        reg.SetExtensionSources([Tab(1, true, "Song"), Tab(2, true, "Else")]);
+
+        Assert.Equal("tab:1", reg.LockedId);
+        Assert.Equal("tab:1", reg.Current?.Id);
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera")]);
+        Assert.Equal("tab:1", reg.LockedId);
+    }
 }

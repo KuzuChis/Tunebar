@@ -138,7 +138,8 @@ public sealed class TaskbarWidgetHost : IDisposable
 
         var hwnd = _source.Handle;
         _trayLeftPx = state.Left;
-        if (slot != _slot)
+        // Also repair a widget someone else moved or resized, not only a changed slot.
+        if (slot != _slot || !IsAtSlot(hwnd, slot))
         {
             SetWindowPos(hwnd, IntPtr.Zero, slot.X, slot.Y, slot.Width, slot.Height, SwpNoActivate);
             _slot = slot;
@@ -225,9 +226,31 @@ public sealed class TaskbarWidgetHost : IDisposable
         return (IntPtr)MaNoActivate;
     }
 
+    /// <summary>True when the widget's real rect, in taskbar client coordinates, equals the slot.</summary>
+    private bool IsAtSlot(IntPtr hwnd, TaskbarSlot slot)
+    {
+        if (!GetWindowRect(hwnd, out var rect)) return false;
+        var points = new[] { new Point { X = rect.Left, Y = rect.Top }, new Point { X = rect.Right, Y = rect.Bottom } };
+        if (MapWindowPoints(IntPtr.Zero, _tray, points, 2) == 0 && Marshal.GetLastWin32Error() != 0) return false;
+        return points[0].X == slot.X && points[0].Y == slot.Y
+            && points[1].X - points[0].X == slot.Width && points[1].Y - points[0].Y == slot.Height;
+    }
+
     /// <summary>Taskbar buttons can cover us after they change; put the widget back on top.</summary>
     private static void KeepOnTop(IntPtr hwnd) =>
         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point { public int X, Y; }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int MapWindowPoints(IntPtr from, IntPtr to, [In, Out] Point[] points, uint count);
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hwnd);

@@ -1,11 +1,12 @@
 ﻿// Tunebar bridge service worker: collects tab state, relays it to the tray app over
 // a local WebSocket, and forwards tray commands to tabs.
 importScripts("lib/core.js");
-const { nextDelay, buildSnapshot, pruneStale } = globalThis.TunebarCore;
+const { nextDelay, buildSnapshot, pruneStale, tabsToPoll } = globalThis.TunebarCore;
 
 const URL_WS = "ws://localhost:47821";
 const SEND_THROTTLE_MS = 250;
 const HEARTBEAT_MS = 20000;
+const POLL_MS = 3000; // ask tabs that went quiet (background throttling) to report
 const STALE_MS = 12000; // content scripts report every <= 5 s; older entries are ghosts
 
 // tabId -> { at: arrival time, state }. Rebuilt from the content scripts' periodic state
@@ -121,5 +122,24 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
+// Throttled background tabs stop their own timers but still receive messages, so ask them.
+function pollQuietTabs() {
+  for (const tabId of tabsToPoll(tabsById, Date.now(), POLL_MS)) {
+    let sent;
+    try {
+      sent = chrome.tabs.sendMessage(tabId, { type: "poll" });
+    } catch (e) {
+      sent = Promise.reject(e);
+    }
+    sent.catch(() => {
+      if (tabId in tabsById) {
+        delete tabsById[tabId];
+        scheduleSnapshot();
+      }
+    });
+  }
+}
+
 setInterval(sendSnapshot, HEARTBEAT_MS);
+setInterval(pollQuietTabs, POLL_MS);
 connect();

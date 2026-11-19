@@ -33,6 +33,13 @@
     return removed;
   }
 
+  // Ids of tabs whose last report is older than thresholdMs (to be asked for a fresh one).
+  function tabsToPoll(entries, now, thresholdMs) {
+    return Object.keys(entries)
+      .filter((id) => now - entries[id].at > thresholdMs)
+      .map(Number);
+  }
+
   function createGainTracker() {
     const seen = new WeakSet();
     return {
@@ -51,6 +58,6 @@
 
   globalThis.TunebarCore = {
     nextDelay, clampVolume, finiteOrNull, canAttachGain, createGainTracker, buildSnapshot,
-    pruneStale,
+    pruneStale, tabsToPoll,
   };
 })();
