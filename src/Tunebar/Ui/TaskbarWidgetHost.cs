@@ -2,6 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Tunebar.Core;
 using Tunebar.Windows;
 
 namespace Tunebar.Ui;
@@ -32,6 +33,7 @@ public sealed class TaskbarWidgetHost : IDisposable
 
     private readonly PopupViewModel _viewModel;
     private readonly TaskbarWatcher _watcher = new();
+    private readonly WakeGuard _wakeGuard = new();
     private readonly DispatcherTimer _timer;
 
     private HwndSource? _source;
@@ -92,6 +94,8 @@ public sealed class TaskbarWidgetHost : IDisposable
     private async void Update()
     {
         if (_busy || _disposed) return;
+        // Just woke from sleep: explorer is still starting up, so leave the taskbar alone for a bit.
+        if (_wakeGuard.ShouldSkip(DateTimeOffset.Now)) return;
         _busy = true;
         try
         {
