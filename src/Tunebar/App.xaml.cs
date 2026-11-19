@@ -155,12 +155,12 @@ public partial class App : Application
         }
     }
 
-    /// <summary>The production auto-start: this exe, the user's Run key, settings in %LOCALAPPDATA%\Tunebar.</summary>
+    /// <summary>The production auto-start: this exe, a Task Scheduler task, settings in %LOCALAPPDATA%\Tunebar.</summary>
     private static AutoStart CreateAutoStart()
     {
         var settingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Tunebar", "settings.json");
-        return new AutoStart(AutoStart.DefaultRunKeyPath, settingsPath, Environment.ProcessPath ?? "");
+        return new AutoStart(new ScheduledTaskStartup(), settingsPath, Environment.ProcessPath ?? "");
     }
 
     private static async Task<SmtcProvider?> TryCreateSmtcAsync()

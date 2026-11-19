@@ -10,11 +10,12 @@ public sealed class LegacyMigrationTests : IDisposable
     private const string ExePath = @"C:\Apps\Tunebar\Tunebar.exe";
 
     private readonly string _base = Path.Combine(Path.GetTempPath(), "TunebarTests-" + Guid.NewGuid().ToString("N"));
+    private readonly FakeStartupEntry _entry = new();
     private string OldDir => Path.Combine(_base, "MediaTray");
     private string NewDir => Path.Combine(_base, "Tunebar");
 
     private LegacyMigration Create() =>
-        new(OldDir, NewDir, RunKeyPath, new AutoStart(RunKeyPath, Path.Combine(NewDir, "settings.json"), ExePath));
+        new(OldDir, NewDir, RunKeyPath, new AutoStart(_entry, Path.Combine(NewDir, "settings.json"), ExePath));
 
     private string? RunValue(string name)
     {
@@ -22,11 +23,13 @@ public sealed class LegacyMigrationTests : IDisposable
         return key?.GetValue(name) as string;
     }
 
-    private void SetOldRun()
+    private void SetRun(string name, string value)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
-        key.SetValue("MediaTray", "\"C:\\Old\\MediaTray.exe\"");
+        key.SetValue(name, value);
     }
+
+    private void SetOldRun() => SetRun("MediaTray", "\"C:\\Old\\MediaTray.exe\"");
 
     private void WriteOld(string name, string content)
     {
@@ -51,7 +54,7 @@ public sealed class LegacyMigrationTests : IDisposable
         Assert.Equal("{\"autoStart\":false}", File.ReadAllText(Path.Combine(NewDir, "settings.json")));
         Assert.Equal("{\"showInTaskbar\":false}", File.ReadAllText(Path.Combine(NewDir, "taskbar-widget.json")));
         Assert.False(Directory.Exists(OldDir));
-        Assert.Null(RunValue("Tunebar"));
+        Assert.Null(_entry.Registered);
     }
 
     [Fact]
@@ -68,24 +71,36 @@ public sealed class LegacyMigrationTests : IDisposable
     }
 
     [Fact]
-    public void Old_autostart_on_registers_new_run_value()
+    public void Old_autostart_on_registers_startup_entry()
     {
         WriteOld("settings.json", "{\"autoStart\":true}");
 
         Create().Run();
 
-        Assert.Equal($"\"{ExePath}\"", RunValue("Tunebar"));
+        Assert.Equal(ExePath, _entry.Registered);
     }
 
     [Fact]
-    public void Old_run_value_is_replaced_by_new_one()
+    public void Old_run_value_is_replaced_by_startup_entry()
     {
         SetOldRun();
 
         Create().Run();
 
         Assert.Null(RunValue("MediaTray"));
-        Assert.Equal($"\"{ExePath}\"", RunValue("Tunebar"));
+        Assert.Equal(ExePath, _entry.Registered);
+        Assert.Contains("\"autoStart\":true", File.ReadAllText(Path.Combine(NewDir, "settings.json")));
+    }
+
+    [Fact]
+    public void Former_tunebar_run_value_is_removed_and_autostart_requested()
+    {
+        SetRun("Tunebar", "\"C:\\Old\\Tunebar.exe\"");
+
+        Create().Run();
+
+        Assert.Null(RunValue("Tunebar"));
+        Assert.Equal(ExePath, _entry.Registered);
         Assert.Contains("\"autoStart\":true", File.ReadAllText(Path.Combine(NewDir, "settings.json")));
     }
 
@@ -95,7 +110,7 @@ public sealed class LegacyMigrationTests : IDisposable
         Create().Run();
 
         Assert.False(Directory.Exists(NewDir));
-        Assert.Null(RunValue("Tunebar"));
+        Assert.Null(_entry.Registered);
     }
 
     [Fact]
@@ -106,6 +121,6 @@ public sealed class LegacyMigrationTests : IDisposable
         var ex = Record.Exception(() => Create().Run());
 
         Assert.Null(ex);
-        Assert.Null(RunValue("Tunebar"));
+        Assert.Null(_entry.Registered);
     }
 }

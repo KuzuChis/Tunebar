@@ -95,7 +95,7 @@ Copy-Item publish\* "$env:LOCALAPPDATA\Programs\Tunebar" -Force
 & "$env:LOCALAPPDATA\Programs\Tunebar\Tunebar.exe"
 ```
 
-Saat pertama kali dijalankan, Tunebar langsung terdaftar untuk berjalan saat Windows mulai.
+Saat pertama kali dijalankan, Tunebar langsung terdaftar untuk berjalan saat Windows mulai. Pendaftarannya berupa tugas Task Scheduler bernama "Tunebar" (terlihat di Task Scheduler, bukan di tab Startup Task Manager). Menu tray **Jalankan saat Windows mulai** menyalakan atau mematikannya.
 
 Untuk mencoba tanpa memasang:
 

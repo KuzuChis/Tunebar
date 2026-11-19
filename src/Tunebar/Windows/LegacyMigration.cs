@@ -7,12 +7,13 @@ namespace Tunebar.Windows;
 
 /// <summary>
 /// One-time move from the old "MediaTray" install: copies its settings into the Tunebar folder,
-/// removes the old folder and the old Run value, and re-registers auto-start under the new name.
+/// removes the old folder and the old Run values, and re-registers auto-start as a scheduled task.
 /// Never throws; safe to run on every start (it does nothing once the old traces are gone).
 /// </summary>
 public sealed class LegacyMigration
 {
-    private const string OldRunValueName = "MediaTray";
+    private const string DefaultRunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private static readonly string[] OldRunValueNames = { "MediaTray", "Tunebar" };
     private static readonly string[] SettingsFiles = { "settings.json", "taskbar-widget.json" };
 
     private readonly string _oldFolder;
@@ -28,13 +29,13 @@ public sealed class LegacyMigration
         _autoStart = autoStart;
     }
 
-    /// <summary>The production migration: %LOCALAPPDATA%\MediaTray into %LOCALAPPDATA%\Tunebar, HKCU Run key.</summary>
+    /// <summary>The production migration: %LOCALAPPDATA%\MediaTray into %LOCALAPPDATA%\Tunebar, HKCU Run key for cleanup.</summary>
     public static LegacyMigration CreateDefault(AutoStart autoStart)
     {
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return new LegacyMigration(
             Path.Combine(local, "MediaTray"), Path.Combine(local, "Tunebar"),
-            AutoStart.DefaultRunKeyPath, autoStart);
+            DefaultRunKeyPath, autoStart);
     }
 
     public void Run()
@@ -101,14 +102,24 @@ public sealed class LegacyMigration
         return autoStartWasOn;
     }
 
-    /// <summary>Deletes the old Run value; returns true if it existed.</summary>
+    /// <summary>
+    /// Deletes the old "MediaTray" Run value and the former "Tunebar" Run value (Explorer skips it;
+    /// auto-start is now a scheduled task). Returns true if either existed.
+    /// </summary>
     private bool RemoveOldRunValue()
     {
         using var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true);
-        if (key?.GetValue(OldRunValueName) is null)
+        if (key is null)
             return false;
-        key.DeleteValue(OldRunValueName, throwOnMissingValue: false);
-        return true;
+        var existed = false;
+        foreach (var name in OldRunValueNames)
+        {
+            if (key.GetValue(name) is null)
+                continue;
+            key.DeleteValue(name, throwOnMissingValue: false);
+            existed = true;
+        }
+        return existed;
     }
 
     private static bool ReadAutoStart(string path)
