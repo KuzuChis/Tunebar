@@ -93,9 +93,10 @@ public sealed class TaskbarWidgetHost : IDisposable
 
     private async void Update()
     {
-        if (_busy || _disposed) return;
+        // The guard sees every tick, even busy ones, so a slow taskbar read is not mistaken for a sleep gap.
         // Just woke from sleep: explorer is still starting up, so leave the taskbar alone for a bit.
-        if (_wakeGuard.ShouldSkip(DateTimeOffset.Now)) return;
+        var wakeSkip = _wakeGuard.ShouldSkip(TimeSpan.FromMilliseconds(Environment.TickCount64));
+        if (_busy || _disposed || wakeSkip) return;
         _busy = true;
         try
         {

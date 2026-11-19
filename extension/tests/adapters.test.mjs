@@ -24,7 +24,7 @@ function load(file, map) {
     querySelector: (s) => { const v = map[s]; return Array.isArray(v) ? v[0] || null : v || null; },
     querySelectorAll: (s) => { const v = map[s]; return Array.isArray(v) ? v : v ? [v] : []; },
   };
-  const ctx = { document, getComputedStyle: (e) => ({ display: e && e.hidden ? "none" : "block" }) };
+  const ctx = { document, setTimeout, getComputedStyle: (e) => ({ display: e && e.hidden ? "none" : "block" }) };
   ctx.globalThis = ctx;
   vm.runInNewContext(fs.readFileSync(new URL(file, dir), "utf8"), ctx);
   return ctx.TunebarSite;
@@ -131,4 +131,107 @@ test("ytmusic: queue mixes direct and wrapped items in order; selected index is 
   assert.equal(s.jump(4), false);
   assert.equal(load("ytmusic.js", { [YM_QUEUE]: box() }).getPlaylist(), null);
   assert.equal(load("ytmusic.js", {}).getPlaylist(), null);
+});
+
+const YM_WIZ = "ytmusic-wiz-player-controls";
+
+test("ytmusic: wiz-player-controls fallback for repeat, next and prev", async () => {
+  let label = "Repeat off";
+  const labels = { "Repeat off": "Repeat all", "Repeat all": "Repeat one", "Repeat one": "Repeat off" };
+  const repeat = el({ onClick: () => { label = labels[label]; } });
+  repeat.getAttribute = (k) => (k === "aria-label" ? label : null);
+  const next = el();
+  const prev = el({ attrs: { "aria-disabled": "true" } });
+  const s = load("ytmusic.js", {
+    [YM_WIZ + ' [aria-label^="Repeat" i]']: repeat,
+    [YM_WIZ + ' [aria-label="Next" i]']: next,
+    [YM_WIZ + ' [aria-label="Previous" i]']: prev,
+  });
+  assert.equal(s.getLoopMode(), "off");
+  assert.equal(await s.setLoopMode("one"), true);
+  assert.equal(repeat.clicks, 2);
+  assert.equal(s.canNext(), true);
+  assert.equal(s.canPrev(), false); // disabled
+  assert.equal(s.next(), true);
+  assert.equal(next.clicks, 1);
+  assert.equal(s.prev(), false);
+  assert.equal(prev.clicks, 0);
+  assert.equal(load("ytmusic.js", {}).next(), false);
+});
+
+test("ytmusic: a newer setLoopMode call stops the older one from clicking", async () => {
+  const bar = el();
+  let mode = "NONE";
+  bar.getAttribute = (k) => (k === "repeat-mode" ? mode : null);
+  const repeat = el(); // the UI is slow: a click changes nothing until we say so
+  const s = load("ytmusic.js", { [YM_BAR]: bar, [YM_BAR + " .repeat"]: repeat });
+  const older = s.setLoopMode("one"); // clicks once, then waits for the UI
+  mode = "ALL"; // the UI catches up, then a newer request is satisfied at once
+  assert.equal(await s.setLoopMode("playlist"), true);
+  assert.equal(await older, false); // wakes at ALL, sees it was superseded, must not click again
+  assert.equal(repeat.clicks, 1);
+});
+
+// Loads media.js against a fake page; returns what it reported and the command listener.
+function loadMedia(site, video) {
+  const core = {};
+  vm.runInNewContext(fs.readFileSync(new URL("../lib/core.js", import.meta.url), "utf8"), core);
+  const sent = [];
+  let listener;
+  const ctx = {
+    TunebarCore: core.TunebarCore,
+    TunebarSite: site,
+    document: { querySelector: () => video, addEventListener() {}, title: "T" },
+    navigator: {},
+    sessionStorage: { getItem: () => null, setItem() {} },
+    HTMLVideoElement: function () {},
+    chrome: {
+      runtime: {
+        sendMessage: (m) => { sent.push(m); return Promise.resolve(); },
+        onMessage: { addListener: (fn) => { listener = fn; } },
+      },
+    },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Promise,
+  };
+  ctx.globalThis = ctx;
+  vm.runInNewContext(fs.readFileSync(new URL("media.js", dir), "utf8"), ctx);
+  return { sent, listener: (...a) => listener(...a) };
+}
+
+test("media: an ownsLoop adapter with unreadable loop mode never sets video.loop", async () => {
+  const video = { paused: false, ended: false, loop: true, currentTime: 0, duration: 100 };
+  const site = { site: "ytmusic", ownsLoop: true, getLoopMode: () => null };
+  const { sent, listener } = loadMedia(site, video);
+  listener({ type: "command", action: "loop", value: "one" });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(video.loop, false);
+  const state = sent.at(-1).state;
+  assert.equal(state.loop, "off");
+  assert.deepEqual([...state.loopModes], ["off"]);
+});
+
+test("media: a legacy adapter still uses video.loop for 'one'; poll is answered", async () => {
+  const video = { paused: false, ended: false, loop: false, currentTime: 0, duration: 100 };
+  const { sent, listener } = loadMedia({ site: "youtube" }, video);
+  listener({ type: "command", action: "loop", value: "one" });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(video.loop, true);
+  assert.equal(sent.at(-1).state.loop, "one");
+  let response;
+  listener({ type: "poll" }, {}, (r) => { response = r; });
+  assert.deepEqual({ ...response }, { ok: true });
+});
+
+test("media: seek sets the time directly when clocks agree, shifts by offset when they diverge", async () => {
+  const site = { site: "ytmusic", getTime: () => ({ position: 83, duration: 262 }) };
+  const aligned = { paused: false, ended: false, loop: false, currentTime: 83.6, duration: 262.4 };
+  loadMedia(site, aligned).listener({ type: "command", action: "seek", value: 100 });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(aligned.currentTime, 100);
+  const gapless = { paused: false, ended: false, loop: false, currentTime: 583.6, duration: 1500 };
+  loadMedia(site, gapless).listener({ type: "command", action: "seek", value: 100 });
+  await new Promise((r) => setImmediate(r));
+  assert.ok(Math.abs(gapless.currentTime - 600.6) < 1e-9);
 });

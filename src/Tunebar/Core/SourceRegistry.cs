@@ -11,6 +11,8 @@ public sealed class SourceRegistry
     // How long a locked source may be missing (extension reconnecting) before the lock is dropped.
     private static readonly TimeSpan LockGracePeriod = TimeSpan.FromSeconds(10);
     private static readonly string[] TitleSuffixes = [" - YouTube Music", " - YouTube"];
+    // A kept cover outlives its tab this long, so a tab that drops out briefly gets it back.
+    private static readonly TimeSpan CoverKeepPeriod = TimeSpan.FromSeconds(30);
 
     private readonly Func<DateTimeOffset> _now;
 
@@ -23,7 +25,18 @@ public sealed class SourceRegistry
     private readonly Dictionary<string, DateTimeOffset> _startedAt = new();
     private readonly Dictionary<string, DateTimeOffset> _pausedAt = new();
     private readonly Dictionary<string, bool> _wasPlaying = new();
-    private readonly Dictionary<string, (string Title, byte[] Bytes)> _borrowedCovers = new(); // tab id -> last twin cover
+    private readonly Dictionary<string, KeptCover> _borrowedCovers = new(); // tab id -> last twin cover
+    // tab id -> the decorated tab last handed out, with what it was built from (keeps instances stable).
+    private readonly Dictionary<string, (MediaSource Input, byte[] Bytes, MediaSource Decorated)> _decorated = new();
+    private IReadOnlyList<MediaSource> _tabsWithCovers = []; // _extensionSources with covers filled in; set only by Refresh
+
+    private sealed class KeptCover(string title, string artist, byte[] bytes, DateTimeOffset seenAt)
+    {
+        public string Title { get; } = title;
+        public string Artist { get; } = artist;
+        public byte[] Bytes { get; } = bytes;
+        public DateTimeOffset SeenAt { get; set; } = seenAt;
+    }
 
     private string? _selectedId;
     private DateTimeOffset? _lockMissingSince; // set while the locked source is not visible
@@ -104,46 +117,81 @@ public sealed class SourceRegistry
     }
 
     /// <summary>
-    /// Extension sources plus SMTC sources, minus the Opera SMTC duplicate of a tab.
-    /// The duplicate's cover bytes (Opera already downloaded the picture for Windows) are given to
-    /// the matching tab, so its cover shows at once instead of waiting for a download of the URL.
+    /// Extension sources (with covers, see <see cref="UpdateTabCovers"/>) plus SMTC sources, minus the
+    /// Opera SMTC duplicate of a tab. Read-only: all state changes happen in <see cref="Refresh"/>.
     /// </summary>
     private List<MediaSource> Visible()
     {
-        var operaByTitle = new Dictionary<string, MediaSource>(StringComparer.OrdinalIgnoreCase);
-        foreach (var s in _smtcSources.Where(s => s.AppName == "Opera"))
-            operaByTitle.TryAdd(NormalizeTitle(s.Title), s);
-
-        var tabs = _extensionSources.Select(tab => WithBorrowedCover(tab, operaByTitle)).ToList();
-
-        var tabTitles = _extensionSources
+        var tabTitles = _tabsWithCovers
             .Select(s => NormalizeTitle(s.Title))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var smtc = _smtcSources.Where(s =>
             !(s.AppName == "Opera" && tabTitles.Contains(NormalizeTitle(s.Title))));
 
-        return tabs.Concat(smtc).ToList();
+        return _tabsWithCovers.Concat(smtc).ToList();
+    }
+
+    /// <summary>
+    /// Builds <see cref="_tabsWithCovers"/>. The Opera duplicate's cover bytes (Opera already downloaded the
+    /// picture for Windows) are given to the matching tab, so its cover shows at once instead of waiting for
+    /// a download of the URL.
+    /// </summary>
+    private void UpdateTabCovers(DateTimeOffset now)
+    {
+        var operaByTitle = new Dictionary<string, MediaSource>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in _smtcSources.Where(s => s.AppName == "Opera"))
+            operaByTitle.TryAdd(NormalizeTitle(s.Title), s);
+
+        var tabs = _extensionSources.Select(tab => WithBorrowedCover(tab, operaByTitle, now)).ToList();
+        _tabsWithCovers = tabs;
+
+        var tabIds = tabs.Select(t => t.Id).ToHashSet();
+        foreach (var id in _decorated.Keys.Where(id => !tabIds.Contains(id)).ToList())
+            _decorated.Remove(id);
+        foreach (var id in _borrowedCovers.Where(e => now - e.Value.SeenAt > CoverKeepPeriod).Select(e => e.Key).ToList())
+            _borrowedCovers.Remove(id);
     }
 
     /// <summary>
     /// Gives the tab its Opera twin's cover bytes. Opera has only one Windows media entry, which follows
     /// whichever tab plays, so a paused tab loses its twin as soon as another tab starts: the last cover
-    /// borrowed for the same title is kept and reused then.
+    /// borrowed for the same title and artist is kept and reused then.
     /// </summary>
-    private MediaSource WithBorrowedCover(MediaSource tab, Dictionary<string, MediaSource> operaByTitle)
+    private MediaSource WithBorrowedCover(MediaSource tab, Dictionary<string, MediaSource> operaByTitle, DateTimeOffset now)
     {
         var title = NormalizeTitle(tab.Title);
-        if (operaByTitle.TryGetValue(title, out var twin) && twin.CoverBytes is { Length: > 0 } bytes)
+        var artist = NormalizeArtist(tab.Artist);
+        byte[]? bytes = null;
+        if (operaByTitle.TryGetValue(title, out var twin) && twin.CoverBytes is { Length: > 0 } twinBytes)
         {
-            _borrowedCovers[tab.Id] = (title, bytes);
-            return tab with { CoverBytes = bytes };
+            bytes = twinBytes;
+            _borrowedCovers[tab.Id] = new KeptCover(title, artist, twinBytes, now);
         }
-        return _borrowedCovers.TryGetValue(tab.Id, out var kept)
+        else if (_borrowedCovers.TryGetValue(tab.Id, out var kept)
             && string.Equals(kept.Title, title, StringComparison.OrdinalIgnoreCase)
-                ? tab with { CoverBytes = kept.Bytes }
-                : tab;
+            && string.Equals(kept.Artist, artist, StringComparison.OrdinalIgnoreCase))
+        {
+            bytes = kept.Bytes;
+            kept.SeenAt = now;
+        }
+
+        if (bytes is null)
+        {
+            _decorated.Remove(tab.Id);
+            return tab;
+        }
+        // Same inputs give the same instance, so Notify does not see a change on every refresh.
+        if (_decorated.TryGetValue(tab.Id, out var cached)
+            && ReferenceEquals(cached.Input, tab) && ReferenceEquals(cached.Bytes, bytes))
+            return cached.Decorated;
+
+        var decorated = tab with { CoverBytes = bytes };
+        _decorated[tab.Id] = (tab, bytes, decorated);
+        return decorated;
     }
+
+    private static string NormalizeArtist(string? artist) => (artist ?? "").Trim();
 
     /// <summary>Trims the title and removes a trailing " - YouTube" / " - YouTube Music" (Opera adds it).</summary>
     private static string NormalizeTitle(string title)
@@ -214,8 +262,7 @@ public sealed class SourceRegistry
             _startedAt.Remove(id);
             _pausedAt.Remove(id);
         }
-        foreach (var id in _borrowedCovers.Keys.Where(id => !present.Contains(id)).ToList())
-            _borrowedCovers.Remove(id);
+        UpdateTabCovers(now);
 
         MoveLockToTab();
         UpdateLock(now);
@@ -234,8 +281,11 @@ public sealed class SourceRegistry
         if (locked is null) return;
 
         var title = NormalizeTitle(locked.Title);
-        var twinTab = _extensionSources.FirstOrDefault(
-            tab => string.Equals(NormalizeTitle(tab.Title), title, StringComparison.OrdinalIgnoreCase));
+        // Opera's single entry follows the playing tab, so prefer that one among same-titled tabs.
+        var matches = _extensionSources
+            .Where(tab => string.Equals(NormalizeTitle(tab.Title), title, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var twinTab = matches.FirstOrDefault(tab => tab.IsPlaying) ?? matches.FirstOrDefault();
         if (twinTab is null) return;
 
         LockedId = twinTab.Id;

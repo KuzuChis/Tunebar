@@ -40,12 +40,6 @@
   function usable(el) {
     return !!el && visible(el) && el.getAttribute("aria-disabled") !== "true" && !el.hasAttribute("disabled");
   }
-  function click(sel) {
-    const el = q(sel);
-    if (!usable(el)) return false;
-    el.click();
-    return true;
-  }
   // Resolves true once check() passes, false after timeoutMs.
   async function waitFor(check, timeoutMs) {
     for (let t = 0; t < timeoutMs; t += 50) {
@@ -55,7 +49,18 @@
     return check();
   }
 
-  const repeatButton = () => q(BAR + " .repeat") || q(BAR + ' [aria-label^="Repeat" i]');
+  // Newer UI has no player bar: its controls live in ytmusic-wiz-player-controls, found by aria-label.
+  const WIZ = "ytmusic-wiz-player-controls";
+  const repeatButton = () =>
+    q(BAR + " .repeat") || q(BAR + ' [aria-label^="Repeat" i]') || q(WIZ + ' [aria-label^="Repeat" i]');
+  const nextButton = () => q(BAR + " .next-button") || q(WIZ + ' [aria-label="Next" i]');
+  const prevButton = () => q(BAR + " .previous-button") || q(WIZ + ' [aria-label="Previous" i]');
+  const press = (el) => {
+    if (!usable(el)) return false;
+    el.click();
+    return true;
+  };
+  let loopRequest = 0; // id of the latest setLoopMode call; older calls stop clicking
   const modeFromLabel = (label) => {
     const l = String(label || "").trim().toLowerCase();
     const hit = REPEAT_LABELS.find(([prefix]) => l.startsWith(prefix));
@@ -95,10 +100,11 @@
 
   globalThis.TunebarSite = {
     site: "ytmusic",
-    next: () => click(BAR + " .next-button"),
-    prev: () => click(BAR + " .previous-button"),
-    canNext: () => usable(q(BAR + " .next-button")),
-    canPrev: () => usable(q(BAR + " .previous-button")),
+    ownsLoop: true, // never use video.loop here, even when the repeat mode cannot be read
+    next: () => press(nextButton()),
+    prev: () => press(prevButton()),
+    canNext: () => usable(nextButton()),
+    canPrev: () => usable(prevButton()),
     getPlaylist() {
       const list = items();
       if (!list.length) return null;
@@ -125,7 +131,9 @@
     // Wait for each change before clicking again so a slow update cannot make us overshoot.
     async setLoopMode(mode) {
       if (loopMode() === null) return false;
+      const id = ++loopRequest;
       for (let n = 0; n < 3 && loopMode() !== mode; n++) {
+        if (id !== loopRequest) return false; // a newer request took over
         const b = repeatButton();
         if (!b) return false;
         const before = loopMode();

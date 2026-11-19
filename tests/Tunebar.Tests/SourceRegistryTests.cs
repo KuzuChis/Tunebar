@@ -11,12 +11,13 @@ public class SourceRegistryTests
         public void Advance(TimeSpan by) => Now += by;
     }
 
-    private static MediaSource Src(string id, SourceKind kind, bool playing, string title = "T", string app = "Opera") =>
-        new(id, kind, app, app, title, null, null, null, playing, null, null,
+    private static MediaSource Src(string id, SourceKind kind, bool playing, string title = "T", string app = "Opera",
+        string? artist = null) =>
+        new(id, kind, app, app, title, artist, null, null, playing, null, null,
             false, false, null, 1, LoopMode.Off, [], null);
 
-    private static MediaSource Tab(int n, bool playing, string title = "T") =>
-        Src($"tab:{n}", SourceKind.ExtensionTab, playing, title);
+    private static MediaSource Tab(int n, bool playing, string title = "T", string? artist = null) =>
+        Src($"tab:{n}", SourceKind.ExtensionTab, playing, title, artist: artist);
 
     private static MediaSource Smtc(string name, bool playing, string title = "T", string app = "Spotify") =>
         Src($"smtc:{name}", SourceKind.Smtc, playing, title, app);
@@ -265,6 +266,87 @@ public class SourceRegistryTests
         // A new title on tab 1 must not reuse the old cover.
         reg.SetExtensionSources([Tab(1, false, "Next song"), Tab(2, true, "Video")]);
         Assert.Null(reg.Current?.CoverBytes);
+    }
+
+    [Fact]
+    public void Changed_not_raised_by_repeated_identical_refreshes_with_a_kept_cover()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        byte[] cover = [1, 2, 3];
+        reg.SetExtensionSources([Tab(1, true, "Song")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera") with { CoverBytes = cover }]);
+        // Tab 1 pauses, Opera moves on: the cover is now a kept one.
+        reg.SetExtensionSources([Tab(1, false, "Song"), Tab(2, true, "Video")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Video", "Opera")]);
+        var sources = new[] { Tab(1, false, "Song"), Tab(2, true, "Video") };
+        reg.SetExtensionSources(sources);
+        var count = 0;
+        reg.Changed += (_, _) => count++;
+
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Advance();
+            reg.SetExtensionSources(sources);
+            reg.SetSmtcSources([Smtc("opera", true, "Video", "Opera")]);
+        }
+
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public void Kept_cover_is_not_reused_for_the_same_title_by_another_artist()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        byte[] cover = [1, 2, 3];
+        reg.SetExtensionSources([Tab(1, true, "Song", "Artist A")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera") with { CoverBytes = cover }]);
+        reg.SetExtensionSources([Tab(1, false, "Song", "artist a"), Tab(2, true, "Video")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Video", "Opera")]);
+        reg.Lock("tab:1");
+        Assert.Same(cover, reg.Current?.CoverBytes); // case-insensitive artist still matches
+
+        reg.SetExtensionSources([Tab(1, false, "Song", "Artist B"), Tab(2, true, "Video")]);
+        Assert.Null(reg.Current?.CoverBytes);
+    }
+
+    [Fact]
+    public void Kept_cover_survives_a_tab_missing_for_seconds_and_is_pruned_after_thirty()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        byte[] cover = [1, 2, 3];
+        reg.SetExtensionSources([Tab(1, true, "Song")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera") with { CoverBytes = cover }]);
+        reg.SetSmtcSources([]);
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        reg.SetExtensionSources([]);
+        reg.SetExtensionSources([Tab(1, false, "Song")]);
+        Assert.Same(cover, reg.Current?.CoverBytes);
+
+        reg.SetExtensionSources([]);
+        clock.Advance(TimeSpan.FromSeconds(31));
+        reg.SetExtensionSources([]);
+        reg.SetExtensionSources([Tab(1, false, "Song")]);
+        Assert.Null(reg.Current?.CoverBytes);
+    }
+
+    [Fact]
+    public void Lock_on_Opera_smtc_moves_to_the_playing_tab_among_same_titled_tabs()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, false, "Other")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Other", "Opera")]);
+        reg.SetExtensionSources([Tab(1, false, "Other")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera")]);
+        reg.Lock("smtc:opera");
+
+        reg.SetExtensionSources([Tab(1, false, "Song"), Tab(2, true, "Song")]);
+
+        Assert.Equal("tab:2", reg.LockedId);
     }
 
     [Fact]

@@ -135,15 +135,20 @@
   }
 
   // Sites with native loop modes (YT Music) own looping; others use video.loop + playlist repeat.
+  // An adapter with ownsLoop never gets video.loop, even when its own mode is unreadable (unknown UI).
+  const ownsLoop = () => site.ownsLoop === true;
+
   function loopState(video) {
     const native = adapter("getLoopMode", null);
     if (native) return native;
+    if (ownsLoop()) return "off";
     if (video.loop) return "one";
     return adapter("getLoopPlaylist", null) === true ? "playlist" : "off";
   }
 
   function loopModes() {
     if (adapter("getLoopMode", null)) return ["off", "playlist", "one"];
+    if (ownsLoop()) return ["off"];
     const modes = ["off"];
     if (adapter("getLoopPlaylist", null) !== null) modes.push("playlist");
     modes.push("one");
@@ -161,6 +166,7 @@
   }
 
   function buildState(video) {
+    if (ownsLoop() && video.loop) video.loop = false; // the site's auto-advance must not be fought
     const t = siteTime();
     return {
       site: site.site || null,
@@ -191,6 +197,10 @@
       video.loop = false; // the site's own repeat handles it; video.loop would fight it
       return Promise.resolve(adapter("setLoopMode", false, mode)).catch(() => {});
     }
+    if (ownsLoop()) {
+      video.loop = false; // mode unreadable: do nothing rather than fall back to video.loop
+      return;
+    }
     if (mode === "one") {
       video.loop = true;
       adapter("setLoopPlaylist", false, false);
@@ -213,8 +223,10 @@
       case "seek":
         if (Number.isFinite(value)) {
           const t = siteTime();
-          // Seek inside the current track: shift by the track's offset in the shared clock.
-          video.currentTime = t ? video.currentTime - t.position + value : value;
+          // The slider gives whole seconds, so shift by the offset only when the clocks clearly diverge
+          // (gapless playback); otherwise set the time directly and avoid up to ~1 s of rounding error.
+          const aligned = t && Math.abs(video.currentTime - t.position) < 2 && Math.abs(video.duration - t.duration) < 2;
+          video.currentTime = t && !aligned ? video.currentTime - t.position + value : value;
         }
         break;
       case "next": adapter("next", false); break;
@@ -229,10 +241,13 @@
     report();
   }
 
-  chrome.runtime.onMessage.addListener((msg) => {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg) return;
     if (msg.type === "command") runCommand(msg.action, msg.value);
-    else if (msg.type === "poll") report(); // answers the service worker even when timers are throttled
+    else if (msg.type === "poll") {
+      report(); // answers the service worker even when timers are throttled
+      try { sendResponse({ ok: true }); } catch (e) { /* ignore */ } // resolves the worker's sendMessage promise
+    }
   });
 
   // ---- scheduling: 1 s while playing, 5 s while paused, immediately on media events ----

@@ -37,6 +37,8 @@
     return check();
   }
 
+  let loopRequest = 0; // id of the latest setLoopPlaylist call; older calls stop clicking
+
   // "playlist" | "one" | "off" | null (no button)
   function loopState() {
     const btn = q(LOOP_BTN);
@@ -83,7 +85,9 @@
     async setLoopPlaylist(on) {
       if (loopState() === null) return false;
       const want = on ? "playlist" : "off";
+      const id = ++loopRequest;
       for (let n = 0; n < 3 && loopState() !== want; n++) {
+        if (id !== loopRequest) return false; // a newer request took over
         const before = loopState();
         q(LOOP_BTN).click();
         await waitFor(() => loopState() !== before, 1500);

@@ -124,6 +124,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Throttled background tabs stop their own timers but still receive messages, so ask them.
 function pollQuietTabs() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return; // nobody to report to
   for (const tabId of tabsToPoll(tabsById, Date.now(), POLL_MS)) {
     let sent;
     try {
@@ -131,13 +132,34 @@ function pollQuietTabs() {
     } catch (e) {
       sent = Promise.reject(e);
     }
-    sent.catch(() => {
-      if (tabId in tabsById) {
-        delete tabsById[tabId];
-        scheduleSnapshot();
-      }
-    });
+    sent.catch(() => dropIfGone(tabId));
   }
+}
+
+function forget(tabId) {
+  if (tabId in tabsById) {
+    delete tabsById[tabId];
+    scheduleSnapshot();
+  }
+}
+
+// A failed poll can just mean the page is briefly unreachable (navigating, reloading), so only
+// drop the tab when it is gone or left YouTube; staleness pruning is the backstop for the rest.
+function dropIfGone(tabId) {
+  let got;
+  try {
+    got = chrome.tabs.get(tabId);
+  } catch (e) {
+    got = Promise.reject(e);
+  }
+  got.then(
+    (tab) => {
+      let host = "";
+      try { host = new URL(tab.url).hostname; } catch (e) { /* url hidden: keep */ return; }
+      if (host !== "www.youtube.com" && host !== "music.youtube.com") forget(tabId);
+    },
+    () => forget(tabId),
+  );
 }
 
 setInterval(sendSnapshot, HEARTBEAT_MS);
