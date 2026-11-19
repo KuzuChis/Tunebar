@@ -23,6 +23,7 @@ public sealed class SourceRegistry
     private readonly Dictionary<string, DateTimeOffset> _startedAt = new();
     private readonly Dictionary<string, DateTimeOffset> _pausedAt = new();
     private readonly Dictionary<string, bool> _wasPlaying = new();
+    private readonly Dictionary<string, (string Title, byte[] Bytes)> _borrowedCovers = new(); // tab id -> last twin cover
 
     private string? _selectedId;
     private DateTimeOffset? _lockMissingSince; // set while the locked source is not visible
@@ -113,10 +114,7 @@ public sealed class SourceRegistry
         foreach (var s in _smtcSources.Where(s => s.AppName == "Opera"))
             operaByTitle.TryAdd(NormalizeTitle(s.Title), s);
 
-        var tabs = _extensionSources.Select(tab =>
-            operaByTitle.TryGetValue(NormalizeTitle(tab.Title), out var twin) && twin.CoverBytes is { Length: > 0 }
-                ? tab with { CoverBytes = twin.CoverBytes }
-                : tab).ToList();
+        var tabs = _extensionSources.Select(tab => WithBorrowedCover(tab, operaByTitle)).ToList();
 
         var tabTitles = _extensionSources
             .Select(s => NormalizeTitle(s.Title))
@@ -126,6 +124,25 @@ public sealed class SourceRegistry
             !(s.AppName == "Opera" && tabTitles.Contains(NormalizeTitle(s.Title))));
 
         return tabs.Concat(smtc).ToList();
+    }
+
+    /// <summary>
+    /// Gives the tab its Opera twin's cover bytes. Opera has only one Windows media entry, which follows
+    /// whichever tab plays, so a paused tab loses its twin as soon as another tab starts: the last cover
+    /// borrowed for the same title is kept and reused then.
+    /// </summary>
+    private MediaSource WithBorrowedCover(MediaSource tab, Dictionary<string, MediaSource> operaByTitle)
+    {
+        var title = NormalizeTitle(tab.Title);
+        if (operaByTitle.TryGetValue(title, out var twin) && twin.CoverBytes is { Length: > 0 } bytes)
+        {
+            _borrowedCovers[tab.Id] = (title, bytes);
+            return tab with { CoverBytes = bytes };
+        }
+        return _borrowedCovers.TryGetValue(tab.Id, out var kept)
+            && string.Equals(kept.Title, title, StringComparison.OrdinalIgnoreCase)
+                ? tab with { CoverBytes = kept.Bytes }
+                : tab;
     }
 
     /// <summary>Trims the title and removes a trailing " - YouTube" / " - YouTube Music" (Opera adds it).</summary>
@@ -197,6 +214,8 @@ public sealed class SourceRegistry
             _startedAt.Remove(id);
             _pausedAt.Remove(id);
         }
+        foreach (var id in _borrowedCovers.Keys.Where(id => !present.Contains(id)).ToList())
+            _borrowedCovers.Remove(id);
 
         MoveLockToTab();
         UpdateLock(now);

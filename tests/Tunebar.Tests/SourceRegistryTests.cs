@@ -245,6 +245,29 @@ public class SourceRegistryTests
     }
 
     [Fact]
+    public void Paused_tab_keeps_its_cover_when_Opera_switches_to_another_tab()
+    {
+        var (reg, clock) = Create();
+        clock.Advance();
+        byte[] cover = [1, 2, 3];
+        reg.SetExtensionSources([Tab(1, true, "Song")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Song", "Opera") with { CoverBytes = cover }]);
+        reg.Lock("tab:1");
+
+        // Tab 1 pauses, tab 2 starts: Opera's single media entry now shows tab 2.
+        clock.Advance();
+        reg.SetExtensionSources([Tab(1, false, "Song"), Tab(2, true, "Video")]);
+        reg.SetSmtcSources([Smtc("opera", true, "Video", "Opera")]);
+
+        Assert.Equal("tab:1", reg.Current?.Id);
+        Assert.Same(cover, reg.Current?.CoverBytes);
+
+        // A new title on tab 1 must not reuse the old cover.
+        reg.SetExtensionSources([Tab(1, false, "Next song"), Tab(2, true, "Video")]);
+        Assert.Null(reg.Current?.CoverBytes);
+    }
+
+    [Fact]
     public void Tab_gets_cover_bytes_from_its_Opera_twin()
     {
         var (reg, clock) = Create();
