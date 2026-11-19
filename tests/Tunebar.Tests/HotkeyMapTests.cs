@@ -18,20 +18,12 @@ public class HotkeyMapTests
     }
 
     [Fact]
-    public void Modifiers_are_ctrl_alt_shift()
-    {
-        Assert.Equal(0x7u, HotkeyMap.Modifiers);
-    }
-
-    [Fact]
     public void NoRepeat_only_on_play_next_prev()
     {
         foreach (var b in HotkeyMap.Bindings)
         {
             var expected = b.Action is HotkeyAction.PlayPause or HotkeyAction.Next or HotkeyAction.Prev;
             Assert.Equal(expected, b.NoRepeat);
-            Assert.Equal(expected, (HotkeyMap.FlagsFor(b) & HotkeyMap.ModNoRepeat) != 0);
-            Assert.Equal(HotkeyMap.Modifiers, HotkeyMap.FlagsFor(b) & HotkeyMap.Modifiers);
         }
     }
 

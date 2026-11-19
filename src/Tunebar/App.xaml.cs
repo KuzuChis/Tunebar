@@ -109,7 +109,7 @@ public partial class App : Application
         // Global hotkeys control whatever source is shown (the locked one when locked).
         _hotkeys = new GlobalHotkeys(action => HandleHotkey(viewModel, action));
         if (_hotkeys.Failed.Count > 0)
-            _tray.ShowNotification("Tunebar", "Hotkey dipakai program lain: " + string.Join(", ", _hotkeys.Failed));
+            _tray.ShowNotification("Tunebar", "Hotkey tidak bisa diaktifkan");
 
         // Developer aid: "Tunebar.exe --show" opens the popup right away (for screenshots).
         if (e.Args.Contains("--show"))
