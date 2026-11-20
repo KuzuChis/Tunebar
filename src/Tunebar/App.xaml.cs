@@ -25,6 +25,7 @@ public partial class App : Application
     private ExtensionServer? _server;
     private SmtcProvider? _smtc;
     private TaskbarIcon? _tray;
+    private TrayMenu? _trayMenu;
     private PopupWindow? _popup;
     private AutoStart? _autoStart;
     private WidgetSettings? _widgetSettings;
@@ -202,59 +203,9 @@ public partial class App : Application
         // The icon is a music note drawn from Segoe Fluent Icons, in the color that suits the taskbar.
         var iconColor = Theme.TaskbarIsLight() ? Brushes.Black : Brushes.White;
 
-        var menu = new ContextMenu();
-
-        menu.Items.Add(new MenuItem
-        {
-            Header = "Hotkey: Ctrl+Alt+Shift + Spasi / ← / → / ↑ / ↓",
-            IsEnabled = false,
-        });
-        menu.Items.Add(new Separator());
-
-        var widgetItem = new MenuItem
-        {
-            Header = "Tampilkan di taskbar",
-            IsCheckable = true,
-            IsChecked = _widgetSettings?.ShowInTaskbar ?? true,
-        };
-        widgetItem.Click += (_, _) =>
-        {
-            // IsCheckable has already flipped the check mark by the time Click runs.
-            if (_widgetHost is not null) _widgetHost.Enabled = widgetItem.IsChecked;
-            _widgetSettings?.Save(widgetItem.IsChecked);
-        };
-        menu.Items.Add(widgetItem);
-
-        var autoStartItem = new MenuItem
-        {
-            Header = "Jalankan saat Windows mulai",
-            IsCheckable = true,
-            IsChecked = _autoStart?.IsEnabled ?? false,
-        };
-        autoStartItem.Click += (_, _) =>
-        {
-            if (_autoStart is null) return;
-            try
-            {
-                _autoStart.SetEnabled(!_autoStart.IsEnabled);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Changing auto-start failed: {ex.Message}");
-            }
-            autoStartItem.IsChecked = _autoStart.IsEnabled;
-        };
-        menu.Items.Add(autoStartItem);
-        menu.Items.Add(new Separator());
-
-        var exitItem = new MenuItem { Header = "Keluar" };
-        exitItem.Click += (_, _) => ExitFromMenu();
-        menu.Items.Add(exitItem);
-
         var tray = new TaskbarIcon
         {
             ToolTipText = "Tunebar",
-            ContextMenu = menu,
             NoLeftClickDelay = true,
             IconSource = new GeneratedIconSource
             {
@@ -265,8 +216,41 @@ public partial class App : Application
             },
         };
         tray.TrayLeftMouseUp += (_, _) => _popup?.Toggle();
+        tray.TrayRightMouseUp += (_, _) => ShowTrayMenu();
         tray.ForceCreate();
         return tray;
+    }
+
+    /// <summary>The right-click menu, built fresh each time so the check marks show the current state.</summary>
+    private void ShowTrayMenu()
+    {
+        var showInTaskbar = _widgetSettings?.ShowInTaskbar ?? true;
+        var autoStart = _autoStart?.IsEnabled ?? false;
+
+        _trayMenu ??= new TrayMenu();
+        _trayMenu.Show(
+        [
+            new TrayMenuItem("Hotkey: Ctrl+Alt+Shift + Spasi / ← / → / ↑ / ↓", Enabled: false),
+            TrayMenuItem.Separator,
+            new TrayMenuItem("Tampilkan di taskbar", () =>
+            {
+                if (_widgetHost is not null) _widgetHost.Enabled = !showInTaskbar;
+                _widgetSettings?.Save(!showInTaskbar);
+            }, Checked: showInTaskbar),
+            new TrayMenuItem("Jalankan saat Windows mulai", () =>
+            {
+                try
+                {
+                    _autoStart?.SetEnabled(!autoStart);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Changing auto-start failed: {ex.Message}");
+                }
+            }, Checked: autoStart),
+            TrayMenuItem.Separator,
+            new TrayMenuItem("Keluar", ExitFromMenu),
+        ]);
     }
 
     /// <summary>The tray icon generator takes exactly one font name, so pick the installed one.</summary>
@@ -288,6 +272,8 @@ public partial class App : Application
         _widgetHost = null;
         _tray?.Dispose();
         _tray = null;
+        _trayMenu?.Dispose();
+        _trayMenu = null;
         _server?.Dispose();
         _server = null;
         _smtc?.Dispose();
