@@ -72,11 +72,11 @@ flowchart LR
 ## Kebutuhan
 
 - Windows 11
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (untuk build) atau .NET 10 Desktop Runtime (untuk menjalankan)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download), hanya untuk build. Hasil build sudah membawa .NET di dalamnya, jadi komputer yang menjalankan Tunebar tidak perlu memasang .NET.
 - Opera, Chrome, Edge, atau browser Chromium lain (untuk kontrol per tab)
 - Node.js (hanya untuk menjalankan tes ekstensi)
 
-Belum punya .NET? Pasang per-user tanpa hak admin dengan skrip resmi Microsoft:
+Belum punya .NET SDK untuk build? Pasang per-user tanpa hak admin dengan skrip resmi Microsoft:
 
 ```powershell
 Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
@@ -90,11 +90,13 @@ Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.
 ```powershell
 git clone https://github.com/KuzuChis/Tunebar.git
 cd Tunebar
-dotnet publish src/Tunebar -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+dotnet publish src/Tunebar -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\Tunebar" | Out-Null
 Copy-Item publish\* "$env:LOCALAPPDATA\Programs\Tunebar" -Force
 & "$env:LOCALAPPDATA\Programs\Tunebar\Tunebar.exe"
 ```
+
+Hasilnya satu file `Tunebar.exe` (sekitar 70 MB) yang sudah membawa .NET. Build tanpa .NET di dalamnya (`--self-contained false`) memang lebih kecil, tapi gagal dijalankan oleh auto-start kalau .NET hanya terpasang per-user. Gejalanya pesan "You must install .NET" saat Windows mulai.
 
 Saat pertama kali dijalankan, Tunebar langsung terdaftar untuk berjalan saat Windows mulai. Pendaftarannya berupa tugas Task Scheduler bernama "Tunebar" (terlihat di Task Scheduler, bukan di tab Startup Task Manager). Menu tray **Jalankan saat Windows mulai** menyalakan atau mematikannya.
 
@@ -155,7 +157,9 @@ node --test "extension/tests/*.test.mjs"
 - Widget hanya muncul di taskbar bawah monitor utama, dengan ikon rata tengah dan tombol Widgets dimatikan. Kalau tidak, kontrol tetap tersedia lewat ikon tray.
 - Adapter per situs saat ini hanya untuk YouTube dan YouTube Music. Situs lain tetap bisa di-play/pause lewat Windows Media Session.
 - Setelah ekstensi di-reload atau diperbarui, tab yang sudah terbuka perlu dimuat ulang agar tersambung kembali.
-- Gambar sampul dimuat dari server gambar YouTube, jadi butuh koneksi internet.
+- Gambar sampul biasanya diambil dari Windows (yang sudah diunduh browser). Hanya kalau tidak tersedia, Tunebar mengunduhnya dari server gambar YouTube, yang butuh koneksi internet.
+- Volume Spotify dan aplikasi lain di luar browser hanya bisa diatur saat aplikasinya sedang memutar. Windows tidak memberi akses ke volume aplikasi yang sedang di-pause.
+- Di YouTube, playlist hanya tampil saat video diputar sebagai bagian dari playlist (alamatnya mengandung `&list=`). *Ulang playlist* hanya tersedia untuk playlist biasa. Video tunggal dan Mix hanya bisa *mati* atau *ulang satu lagu*. Di YouTube Music, ketiga mode selalu tersedia lewat tombol repeat YouTube Music sendiri.
 
 ## Teknologi
 
